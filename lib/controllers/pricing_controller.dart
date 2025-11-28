@@ -59,73 +59,6 @@ class PricingController extends ChangeNotifier {
         ],
       );
 
-  int? _editingIndex;
-
-  int? get editingIndex => _editingIndex;
-
-  /// Ativa o modo edição carregando os dados de um item salvo
-  void startEditing(int index) {
-    if (index < 0 || index >= _savedPricings.length) return;
-
-    final selected = _savedPricings[index];
-
-    // Carregar no modelo atual (clonar)
-    final clonedItems = selected.items
-        .map(
-          (e) => CostItem(
-        name: e.name,
-        description: e.description,
-        costPerKg: e.costPerKg,
-      ),
-    )
-        .toList();
-
-    model = PricingModel(
-      productName: selected.productName,
-      markupPercent: selected.markupPercent,
-      items: clonedItems,
-    );
-
-    _editingIndex = index;
-    notifyListeners();
-  }
-
-  /// Salvar (criar ou atualizar)
-  void saveCurrentPricing() {
-    final clonedItems = model.items
-        .map(
-          (e) => CostItem(
-        name: e.name,
-        description: e.description,
-        costPerKg: e.costPerKg,
-      ),
-    )
-        .toList();
-
-    final saved = PricingModel(
-      productName: model.productName,
-      markupPercent: model.markupPercent,
-      items: clonedItems,
-    );
-
-    // Se estiver editando → atualizar
-    if (_editingIndex != null) {
-      _savedPricings[_editingIndex!] = saved;
-      _editingIndex = null;
-    } else {
-      // Senão → criar novo
-      _savedPricings.add(saved);
-    }
-
-    notifyListeners();
-  }
-
-  /// Cancelar edição
-  void cancelEditing() {
-    _editingIndex = null;
-  }
-
-
   void setProductName(String value) {
     model.productName = value;
     notifyListeners();
@@ -152,9 +85,39 @@ class PricingController extends ChangeNotifier {
     model.items.removeAt(index);
     notifyListeners();
   }
-/*
-  /// Clona o modelo atual e salva na lista
-  void saveCurrentPricing() {
+
+  /// Carrega um item salvo para dentro do `model` atual (modo edição)
+  void loadFromSaved(int index) {
+    if (index < 0 || index >= _savedPricings.length) return;
+
+    final selected = _savedPricings[index];
+
+    final clonedItems = selected.items
+        .map(
+          (e) => CostItem(
+        name: e.name,
+        description: e.description,
+        costPerKg: e.costPerKg,
+      ),
+    )
+        .toList();
+
+    model = PricingModel(
+      productName: selected.productName,
+      markupPercent: selected.markupPercent,
+      items: clonedItems,
+    );
+
+    debugPrint(
+        'loadFromSaved: carregando índice $index (${selected.productName})');
+    notifyListeners();
+  }
+
+  /// Salvar (criar novo ou atualizar um existente)
+  void saveCurrentPricing({int? indexToUpdate}) {
+    debugPrint(
+        'saveCurrentPricing chamado. indexToUpdate=$indexToUpdate, produto=${model.productName}, price250g=${model.price250g}');
+
     final clonedItems = model.items
         .map(
           (e) => CostItem(
@@ -171,14 +134,23 @@ class PricingController extends ChangeNotifier {
       items: clonedItems,
     );
 
-    _savedPricings.add(saved);
+    if (indexToUpdate != null &&
+        indexToUpdate >= 0 &&
+        indexToUpdate < _savedPricings.length) {
+      _savedPricings[indexToUpdate] = saved;
+      debugPrint('Atualizando item existente no índice $indexToUpdate');
+    } else {
+      _savedPricings.add(saved);
+      debugPrint(
+          'Inserindo novo item. Total agora: ${_savedPricings.length}');
+    }
+
     notifyListeners();
   }
-  */
 
-  /// Remove um item salvo
   void removeSavedPricing(int index) {
     if (index < 0 || index >= _savedPricings.length) return;
+    debugPrint('Removendo item do índice $index');
     _savedPricings.removeAt(index);
     notifyListeners();
   }

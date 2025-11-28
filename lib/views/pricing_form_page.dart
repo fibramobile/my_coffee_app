@@ -4,8 +4,13 @@ import 'widgets/cost_item_tile.dart';
 
 class PricingFormPage extends StatefulWidget {
   final PricingController controller;
+  final int? editingIndex; // <--- NOVO
 
-  const PricingFormPage({Key? key, required this.controller}) : super(key: key);
+  const PricingFormPage({
+    Key? key,
+    required this.controller,
+    this.editingIndex,
+  }) : super(key: key);
 
   @override
   State<PricingFormPage> createState() => _PricingFormPageState();
@@ -13,6 +18,17 @@ class PricingFormPage extends StatefulWidget {
 
 class _PricingFormPageState extends State<PricingFormPage> {
   final _formKey = GlobalKey<FormState>();
+
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Se veio um índice de edição, carrega os dados desse item
+    if (widget.editingIndex != null) {
+      widget.controller.loadFromSaved(widget.editingIndex!);
+    }
+  }
 
   double _parseNumber(String value) {
     final cleaned = value.replaceAll('.', '').replaceAll(',', '.');
@@ -22,6 +38,17 @@ class _PricingFormPageState extends State<PricingFormPage> {
   String _formatMoney(double value) {
     return value.toStringAsFixed(2).replaceAll('.', ',');
   }
+
+  Color getMarginColor(double marginPercent) {
+    if (marginPercent >= 40) {
+      return Colors.blueAccent;        // Ideal
+    } else if (marginPercent >= 30) {
+      return Colors.green; // Boa
+    } else {
+      return Colors.yellow;    // Risco
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -127,11 +154,31 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     'Lucro líquido (R\$/kg)',
                     model.profitPerKg,
                   ),
+                  /*
                   _buildSummaryRow(
                     'Margem líquida (%)',
                     model.profitMargin * 100,
                     suffix: '%',
+                  ),*/
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Margem líquida (%)'),
+                        ),
+                        Text(
+                          '${(model.profitMargin * 100).toStringAsFixed(2).replaceAll('.', ',')}%',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: getMarginColor(model.profitMargin * 100),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+
 
                   const SizedBox(height: 16),
 
@@ -140,20 +187,19 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: Icon(
-                        widget.controller.editingIndex != null ? Icons.check : Icons.save,
+                        widget.editingIndex != null ? Icons.check : Icons.save,
                       ),
                       label: Text(
-                        widget.controller.editingIndex != null
+                        widget.editingIndex != null
                             ? 'Atualizar precificação'
                             : 'Salvar precificação',
                       ),
                       onPressed: () {
-                        final isEditing = widget.controller.editingIndex != null;
+                        final isEditing = widget.editingIndex != null;
 
-                        // (Opcional) debug:
-                        // debugPrint('Salvando. isEditing=$isEditing');
-
-                        widget.controller.saveCurrentPricing();
+                        widget.controller.saveCurrentPricing(
+                          indexToUpdate: widget.editingIndex,
+                        );
 
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -165,13 +211,13 @@ class _PricingFormPageState extends State<PricingFormPage> {
                           ),
                         );
 
-                        // Só volta uma tela se realmente houver algo para "voltar"
                         if (Navigator.canPop(context)) {
                           Navigator.pop(context);
                         }
                       },
                     ),
                   ),
+
 
 
                   const SizedBox(height: 24),
@@ -213,12 +259,15 @@ class _PricingFormPageState extends State<PricingFormPage> {
                                 IconButton(
                                   icon: const Icon(Icons.edit),
                                   onPressed: () {
-                                    widget.controller.startEditing(index);
+                                    debugPrint(
+                                        'Clicou em editar índice $index (${p.productName})');
+
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
                                         builder: (_) => PricingFormPage(
                                           controller: widget.controller,
+                                          editingIndex: index, // <--- ESSENCIAL
                                         ),
                                       ),
                                     );
@@ -232,6 +281,7 @@ class _PricingFormPageState extends State<PricingFormPage> {
                                 ),
                               ],
                             ),
+
 
                           ),
                         );
