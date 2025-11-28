@@ -5,6 +5,11 @@ import '../models/cost_item.dart';
 class PricingController extends ChangeNotifier {
   PricingModel model;
 
+  /// Lista de precificações salvas
+  final List<PricingModel> _savedPricings = [];
+
+  List<PricingModel> get savedPricings => List.unmodifiable(_savedPricings);
+
   PricingController({PricingModel? initial})
       : model = initial ??
       PricingModel(
@@ -78,6 +83,35 @@ class PricingController extends ChangeNotifier {
   void removeItem(int index) {
     if (index < 0 || index >= model.items.length) return;
     model.items.removeAt(index);
+    notifyListeners();
+  }
+
+  /// Clona o modelo atual e salva na lista
+  void saveCurrentPricing() {
+    final clonedItems = model.items
+        .map(
+          (e) => CostItem(
+        name: e.name,
+        description: e.description,
+        costPerKg: e.costPerKg,
+      ),
+    )
+        .toList();
+
+    final saved = PricingModel(
+      productName: model.productName,
+      markupPercent: model.markupPercent,
+      items: clonedItems,
+    );
+
+    _savedPricings.add(saved);
+    notifyListeners();
+  }
+
+  /// Remove um item salvo
+  void removeSavedPricing(int index) {
+    if (index < 0 || index >= _savedPricings.length) return;
+    _savedPricings.removeAt(index);
     notifyListeners();
   }
 }

@@ -19,12 +19,17 @@ class _PricingFormPageState extends State<PricingFormPage> {
     return double.tryParse(cleaned) ?? 0.0;
   }
 
+  String _formatMoney(double value) {
+    return value.toStringAsFixed(2).replaceAll('.', ',');
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
         final model = widget.controller.model;
+        final saved = widget.controller.savedPricings;
 
         return Scaffold(
           appBar: AppBar(
@@ -37,7 +42,7 @@ class _PricingFormPageState extends State<PricingFormPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Dados gerais
+                  // DADOS GERAIS
                   TextFormField(
                     initialValue: model.productName,
                     decoration: const InputDecoration(
@@ -69,7 +74,7 @@ class _PricingFormPageState extends State<PricingFormPage> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Lista de itens de custo
+                  // ITENS DE CUSTO
                   ListView.builder(
                     physics: const NeverScrollableScrollPhysics(),
                     shrinkWrap: true,
@@ -90,7 +95,7 @@ class _PricingFormPageState extends State<PricingFormPage> {
                   Divider(color: Colors.grey[400]),
                   const SizedBox(height: 8),
 
-                  // Resumo financeiro
+                  // RESUMO
                   Text(
                     'Resumo da precificação (por kg de café torrado)',
                     style: Theme.of(context).textTheme.titleMedium,
@@ -128,19 +133,70 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     suffix: '%',
                   ),
 
+                  const SizedBox(height: 16),
+
+                  // BOTÃO SALVAR
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.save),
+                      label: const Text('Salvar precificação'),
+                      onPressed: () {
+                        widget.controller.saveCurrentPricing();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Precificação salva com sucesso!'),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
                   const SizedBox(height: 24),
-                  Center(
-                    child: Text(
-                      'Esses valores são baseados na sua planilha Bugia/Tiúba/Arara.\n'
-                          'Depois podemos evoluir para salvar lotes, históricos e relatórios.',
-                      textAlign: TextAlign.center,
+                  Divider(color: Colors.grey[500]),
+                  const SizedBox(height: 8),
+
+                  // LISTA DE PRECIFICAÇÕES SALVAS
+                  Text(
+                    'Precificações salvas',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+
+                  if (saved.isEmpty)
+                    Text(
+                      'Nenhuma precificação salva ainda.',
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
                           ?.copyWith(color: Colors.grey[600]),
+                    )
+                  else
+                    ListView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      shrinkWrap: true,
+                      itemCount: saved.length,
+                      itemBuilder: (context, index) {
+                        final p = saved[index];
+                        final price250 = p.price250g;
+                        return Card(
+                          child: ListTile(
+                            title: Text(p.productName),
+                            subtitle: Text(
+                              'Preço 250g: R\$ ${_formatMoney(price250)}',
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () {
+                                widget.controller.removeSavedPricing(index);
+                              },
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                  const SizedBox(height: 16),
+
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
