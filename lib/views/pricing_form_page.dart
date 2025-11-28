@@ -4,7 +4,7 @@ import 'widgets/cost_item_tile.dart';
 
 class PricingFormPage extends StatefulWidget {
   final PricingController controller;
-  final int? editingIndex; // <--- NOVO
+  final int? editingIndex;
 
   const PricingFormPage({
     Key? key,
@@ -19,12 +19,11 @@ class PricingFormPage extends StatefulWidget {
 class _PricingFormPageState extends State<PricingFormPage> {
   final _formKey = GlobalKey<FormState>();
 
-
   @override
   void initState() {
     super.initState();
 
-    // Se veio um índice de edição, carrega os dados desse item
+    // Se veio um índice de edição, carregamos esses dados
     if (widget.editingIndex != null) {
       widget.controller.loadFromSaved(widget.editingIndex!);
     }
@@ -39,16 +38,16 @@ class _PricingFormPageState extends State<PricingFormPage> {
     return value.toStringAsFixed(2).replaceAll('.', ',');
   }
 
+  /// Define cor visual da margem líquida
   Color getMarginColor(double marginPercent) {
     if (marginPercent >= 40) {
-      return Colors.blueAccent;        // Ideal
+      return Colors.green; // Ideal
     } else if (marginPercent >= 30) {
-      return Colors.green; // Boa
+      return Colors.orange; // Boa
     } else {
-      return Colors.yellow;    // Risco
+      return Colors.red; // Risco
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -59,31 +58,41 @@ class _PricingFormPageState extends State<PricingFormPage> {
         final saved = widget.controller.savedPricings;
 
         return Scaffold(
+          // ❌ NÃO colocamos backgroundColor aqui, usamos o do Theme (claro)
           appBar: AppBar(
             title: const Text('Precificação de Café'),
+            centerTitle: true,
           ),
           body: Form(
             key: _formKey,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // -------------------------
                   // DADOS GERAIS
+                  // -------------------------
+                  Text(
+                    "Dados gerais",
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 12),
+
                   TextFormField(
                     initialValue: model.productName,
                     decoration: const InputDecoration(
                       labelText: 'Nome do produto (ex: Mel de Bugia)',
-                      border: OutlineInputBorder(),
+                      // ❌ sem border aqui; usa a do Theme
                     ),
                     onChanged: widget.controller.setProductName,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
+
                   TextFormField(
                     initialValue: model.markupPercent.toStringAsFixed(0),
                     decoration: const InputDecoration(
                       labelText: 'Margem / Markup desejado (%)',
-                      border: OutlineInputBorder(),
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -93,15 +102,18 @@ class _PricingFormPageState extends State<PricingFormPage> {
                           .setMarkupPercent(_parseNumber(value));
                     },
                   ),
-                  const SizedBox(height: 16),
 
+                  const SizedBox(height: 24),
+
+                  // -------------------------
+                  // CUSTOS POR KG
+                  // -------------------------
                   Text(
                     'Custos por kg',
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
-                  // ITENS DE CUSTO
                   ListView.builder(
                     physics: const NeverScrollableScrollPhysics(),
                     shrinkWrap: true,
@@ -118,16 +130,18 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     },
                   ),
 
-                  const SizedBox(height: 16),
-                  Divider(color: Colors.grey[400]),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 24),
+                  Divider(color: Colors.grey.shade300),
+                  const SizedBox(height: 12),
 
+                  // -------------------------
                   // RESUMO
+                  // -------------------------
                   Text(
                     'Resumo da precificação (por kg de café torrado)',
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
                   _buildSummaryRow(
                     'Total de custo (R\$/kg)',
@@ -138,34 +152,31 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     model.finalPricePerKg,
                     highlight: true,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildSummaryRow(
                     'Preço de venda (250g)',
                     model.price250g,
-                    prefix: 'R\$ ',
                   ),
                   _buildSummaryRow(
                     'Preço de venda (1kg)',
                     model.finalPricePerKg,
-                    prefix: 'R\$ ',
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildSummaryRow(
                     'Lucro líquido (R\$/kg)',
                     model.profitPerKg,
                   ),
-                  /*
-                  _buildSummaryRow(
-                    'Margem líquida (%)',
-                    model.profitMargin * 100,
-                    suffix: '%',
-                  ),*/
+
+                  // MARGEM LÍQUIDA COLORIDA
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    padding: const EdgeInsets.symmetric(vertical: 6.0),
                     child: Row(
                       children: [
                         const Expanded(
-                          child: Text('Margem líquida (%)'),
+                          child: Text(
+                            'Margem líquida (%)',
+                            style: TextStyle(fontSize: 15),
+                          ),
                         ),
                         Text(
                           '${(model.profitMargin * 100).toStringAsFixed(2).replaceAll('.', ',')}%',
@@ -179,10 +190,11 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     ),
                   ),
 
+                  const SizedBox(height: 24),
 
-                  const SizedBox(height: 16),
-
-                  // BOTÃO SALVAR
+                  // -------------------------
+                  // BOTÃO SALVAR / ATUALIZAR
+                  // -------------------------
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -218,26 +230,23 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     ),
                   ),
 
+                  const SizedBox(height: 32),
+                  Divider(color: Colors.grey.shade300),
+                  const SizedBox(height: 12),
 
-
-                  const SizedBox(height: 24),
-                  Divider(color: Colors.grey[500]),
-                  const SizedBox(height: 8),
-
-                  // LISTA DE PRECIFICAÇÕES SALVAS
+                  // -------------------------
+                  // LISTA DE PRECIFICAÇÕES
+                  // -------------------------
                   Text(
                     'Precificações salvas',
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
                   if (saved.isEmpty)
                     Text(
                       'Nenhuma precificação salva ainda.',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: Colors.grey[600]),
+                      style: TextStyle(color: Colors.grey.shade600),
                     )
                   else
                     ListView.builder(
@@ -247,48 +256,58 @@ class _PricingFormPageState extends State<PricingFormPage> {
                       itemBuilder: (context, index) {
                         final p = saved[index];
                         final price250 = p.price250g;
+
                         return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
                           child: ListTile(
-                            title: Text(p.productName),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            title: Text(
+                              p.productName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
                             subtitle: Text(
                               'Preço 250g: R\$ ${_formatMoney(price250)}',
+                              style: const TextStyle(color: Colors.grey),
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit),
+                                  icon: const Icon(Icons.edit,
+                                      color: Colors.amber),
                                   onPressed: () {
-                                    debugPrint(
-                                        'Clicou em editar índice $index (${p.productName})');
-
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
                                         builder: (_) => PricingFormPage(
                                           controller: widget.controller,
-                                          editingIndex: index, // <--- ESSENCIAL
+                                          editingIndex: index,
                                         ),
                                       ),
                                     );
                                   },
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline),
+                                  icon: const Icon(Icons.delete_outline,
+                                      color: Colors.redAccent),
                                   onPressed: () {
                                     widget.controller.removeSavedPricing(index);
                                   },
                                 ),
                               ],
                             ),
-
-
                           ),
                         );
                       },
                     ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -301,30 +320,29 @@ class _PricingFormPageState extends State<PricingFormPage> {
   Widget _buildSummaryRow(
       String label,
       double value, {
-        String prefix = 'R\$ ',
-        String suffix = '',
         bool highlight = false,
       }) {
+    final formatted = value.toStringAsFixed(2).replaceAll('.', ',');
+
+    final baseStyle = Theme.of(context).textTheme.bodyMedium ??
+        const TextStyle(fontSize: 15);
+
     final textStyle = highlight
-        ? const TextStyle(
+        ? baseStyle.copyWith(
       fontWeight: FontWeight.bold,
       fontSize: 16,
     )
-        : const TextStyle(fontSize: 15);
-
-    final formatted = value.toStringAsFixed(2).replaceAll('.', ',');
+        : baseStyle.copyWith(
+      fontSize: 15,
+      color: Colors.black87,
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
-          Expanded(child: Text(label)),
-          Text(
-            prefix == 'R\$ ' && suffix.isEmpty
-                ? '$prefix$formatted'
-                : '$prefix$formatted$suffix',
-            style: textStyle,
-          ),
+          Expanded(child: Text(label, style: textStyle)),
+          Text('R\$ $formatted', style: textStyle),
         ],
       ),
     );
