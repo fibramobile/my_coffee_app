@@ -139,18 +139,40 @@ class _PricingFormPageState extends State<PricingFormPage> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      icon: const Icon(Icons.save),
-                      label: const Text('Salvar precificação'),
+                      icon: Icon(
+                        widget.controller.editingIndex != null ? Icons.check : Icons.save,
+                      ),
+                      label: Text(
+                        widget.controller.editingIndex != null
+                            ? 'Atualizar precificação'
+                            : 'Salvar precificação',
+                      ),
                       onPressed: () {
+                        final isEditing = widget.controller.editingIndex != null;
+
+                        // (Opcional) debug:
+                        // debugPrint('Salvando. isEditing=$isEditing');
+
                         widget.controller.saveCurrentPricing();
+
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Precificação salva com sucesso!'),
+                          SnackBar(
+                            content: Text(
+                              isEditing
+                                  ? 'Precificação atualizada!'
+                                  : 'Precificação salva!',
+                            ),
                           ),
                         );
+
+                        // Só volta uma tela se realmente houver algo para "voltar"
+                        if (Navigator.canPop(context)) {
+                          Navigator.pop(context);
+                        }
                       },
                     ),
                   ),
+
 
                   const SizedBox(height: 24),
                   Divider(color: Colors.grey[500]),
@@ -185,12 +207,32 @@ class _PricingFormPageState extends State<PricingFormPage> {
                             subtitle: Text(
                               'Preço 250g: R\$ ${_formatMoney(price250)}',
                             ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              onPressed: () {
-                                widget.controller.removeSavedPricing(index);
-                              },
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit),
+                                  onPressed: () {
+                                    widget.controller.startEditing(index);
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => PricingFormPage(
+                                          controller: widget.controller,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () {
+                                    widget.controller.removeSavedPricing(index);
+                                  },
+                                ),
+                              ],
                             ),
+
                           ),
                         );
                       },

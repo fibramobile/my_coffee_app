@@ -59,6 +59,73 @@ class PricingController extends ChangeNotifier {
         ],
       );
 
+  int? _editingIndex;
+
+  int? get editingIndex => _editingIndex;
+
+  /// Ativa o modo edição carregando os dados de um item salvo
+  void startEditing(int index) {
+    if (index < 0 || index >= _savedPricings.length) return;
+
+    final selected = _savedPricings[index];
+
+    // Carregar no modelo atual (clonar)
+    final clonedItems = selected.items
+        .map(
+          (e) => CostItem(
+        name: e.name,
+        description: e.description,
+        costPerKg: e.costPerKg,
+      ),
+    )
+        .toList();
+
+    model = PricingModel(
+      productName: selected.productName,
+      markupPercent: selected.markupPercent,
+      items: clonedItems,
+    );
+
+    _editingIndex = index;
+    notifyListeners();
+  }
+
+  /// Salvar (criar ou atualizar)
+  void saveCurrentPricing() {
+    final clonedItems = model.items
+        .map(
+          (e) => CostItem(
+        name: e.name,
+        description: e.description,
+        costPerKg: e.costPerKg,
+      ),
+    )
+        .toList();
+
+    final saved = PricingModel(
+      productName: model.productName,
+      markupPercent: model.markupPercent,
+      items: clonedItems,
+    );
+
+    // Se estiver editando → atualizar
+    if (_editingIndex != null) {
+      _savedPricings[_editingIndex!] = saved;
+      _editingIndex = null;
+    } else {
+      // Senão → criar novo
+      _savedPricings.add(saved);
+    }
+
+    notifyListeners();
+  }
+
+  /// Cancelar edição
+  void cancelEditing() {
+    _editingIndex = null;
+  }
+
+
   void setProductName(String value) {
     model.productName = value;
     notifyListeners();
@@ -85,7 +152,7 @@ class PricingController extends ChangeNotifier {
     model.items.removeAt(index);
     notifyListeners();
   }
-
+/*
   /// Clona o modelo atual e salva na lista
   void saveCurrentPricing() {
     final clonedItems = model.items
@@ -107,6 +174,7 @@ class PricingController extends ChangeNotifier {
     _savedPricings.add(saved);
     notifyListeners();
   }
+  */
 
   /// Remove um item salvo
   void removeSavedPricing(int index) {
