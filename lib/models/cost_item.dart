@@ -20,4 +20,22 @@ class CostItem {
       costPerKg: costPerKg ?? this.costPerKg,
     );
   }
+
+  // ---- JSON ----
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'description': description,
+      'costPerKg': costPerKg,
+    };
+  }
+
+  factory CostItem.fromJson(Map<String, dynamic> json) {
+    return CostItem(
+      name: json['name'] as String? ?? '',
+      description: json['description'] as String? ?? '',
+      costPerKg: (json['costPerKg'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
 }

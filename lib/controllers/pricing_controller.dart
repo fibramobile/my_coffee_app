@@ -1,13 +1,16 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/pricing_model.dart';
 import '../models/cost_item.dart';
 
 class PricingController extends ChangeNotifier {
+  static const String _prefsKey = 'saved_pricings';
+
   PricingModel model;
 
-  /// Lista de precificações salvas
   final List<PricingModel> _savedPricings = [];
-
   List<PricingModel> get savedPricings => List.unmodifiable(_savedPricings);
 
   PricingController({PricingModel? initial})
@@ -57,7 +60,11 @@ class PricingController extends ChangeNotifier {
             costPerKg: 5,
           ),
         ],
-      );
+      ) {
+    _loadFromPrefs();
+  }
+
+  // ------- setters normais -------
 
   void setProductName(String value) {
     model.productName = value;
@@ -86,7 +93,8 @@ class PricingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Carrega um item salvo para dentro do `model` atual (modo edição)
+  // ------- carregar para edição -------
+
   void loadFromSaved(int index) {
     if (index < 0 || index >= _savedPricings.length) return;
 
@@ -108,16 +116,12 @@ class PricingController extends ChangeNotifier {
       items: clonedItems,
     );
 
-    debugPrint(
-        'loadFromSaved: carregando índice $index (${selected.productName})');
     notifyListeners();
   }
 
-  /// Salvar (criar novo ou atualizar um existente)
-  void saveCurrentPricing({int? indexToUpdate}) {
-    debugPrint(
-        'saveCurrentPricing chamado. indexToUpdate=$indexToUpdate, produto=${model.productName}, price250g=${model.price250g}');
+  // ------- salvar (novo ou editar) -------
 
+  Future<void> saveCurrentPricing({int? indexToUpdate}) async {
     final clonedItems = model.items
         .map(
           (e) => CostItem(
@@ -138,20 +142,50 @@ class PricingController extends ChangeNotifier {
         indexToUpdate >= 0 &&
         indexToUpdate < _savedPricings.length) {
       _savedPricings[indexToUpdate] = saved;
-      debugPrint('Atualizando item existente no índice $indexToUpdate');
     } else {
       _savedPricings.add(saved);
-      debugPrint(
-          'Inserindo novo item. Total agora: ${_savedPricings.length}');
     }
 
+    await _saveToPrefs();
     notifyListeners();
   }
 
-  void removeSavedPricing(int index) {
+  Future<void> removeSavedPricing(int index) async {
     if (index < 0 || index >= _savedPricings.length) return;
-    debugPrint('Removendo item do índice $index');
     _savedPricings.removeAt(index);
+    await _saveToPrefs();
     notifyListeners();
+  }
+
+  // ------- SharedPreferences -------
+
+  Future<void> _saveToPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final listMap =
+    _savedPricings.map((p) => p.toJson()).toList();
+
+    final jsonString = jsonEncode(listMap);
+
+    await prefs.setString(_prefsKey, jsonString);
+  }
+
+  Future<void> _loadFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_prefsKey);
+
+    if (jsonString == null || jsonString.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(jsonString) as List<dynamic>;
+      _savedPricings
+        ..clear()
+        ..addAll(decoded
+            .map((e) => PricingModel.fromJson(e as Map<String, dynamic>)));
+
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Erro ao carregar precificações salvas: $e');
+    }
   }
 }
