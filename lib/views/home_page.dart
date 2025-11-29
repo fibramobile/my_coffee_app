@@ -78,6 +78,10 @@ class HomePage extends StatelessWidget {
               mainAxisSpacing: 12,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
+
+              // ⬇️ CELULAS MAIS ALTAS (ANTES ERA 1.0)
+              childAspectRatio: 0.85,
+
               children: [
                 // PLANTIO & TALHÕES
                 _ModuleCard(
