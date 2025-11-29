@@ -34,18 +34,14 @@ class _PricingFormPageState extends State<PricingFormPage> {
     return double.tryParse(cleaned) ?? 0.0;
   }
 
-  String _formatMoney(double value) {
-    return value.toStringAsFixed(2).replaceAll('.', ',');
-  }
-
   /// Define cor visual da margem líquida
   Color getMarginColor(double marginPercent) {
     if (marginPercent >= 40) {
-      return Colors.green; // Ideal
+      return Colors.green;
     } else if (marginPercent >= 30) {
-      return Colors.orange; // Boa
+      return Colors.orange;
     } else {
-      return Colors.red; // Risco
+      return Colors.red;
     }
   }
 
@@ -55,12 +51,14 @@ class _PricingFormPageState extends State<PricingFormPage> {
       animation: widget.controller,
       builder: (context, _) {
         final model = widget.controller.model;
-        final saved = widget.controller.savedPricings;
 
         return Scaffold(
-          // ❌ NÃO colocamos backgroundColor aqui, usamos o do Theme (claro)
           appBar: AppBar(
-            title: const Text('Precificação de Café'),
+            title: Text(
+              widget.editingIndex != null
+                  ? 'Editar precificação'
+                  : 'Nova precificação',
+            ),
             centerTitle: true,
           ),
           body: Form(
@@ -83,7 +81,6 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     initialValue: model.productName,
                     decoration: const InputDecoration(
                       labelText: 'Nome do produto (ex: Mel de Bugia)',
-                      // ❌ sem border aqui; usa a do Theme
                     ),
                     onChanged: widget.controller.setProductName,
                   ),
@@ -138,31 +135,36 @@ class _PricingFormPageState extends State<PricingFormPage> {
                   // RESUMO
                   // -------------------------
                   Text(
-                    'Resumo da precificação (por kg de café torrado)',
+                    'Resumo da precificação',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 12),
 
                   _buildSummaryRow(
+                    context,
                     'Total de custo (R\$/kg)',
                     model.totalCostPerKg,
                   ),
                   _buildSummaryRow(
+                    context,
                     'Preço final (com margem) – R\$/kg',
                     model.finalPricePerKg,
                     highlight: true,
                   ),
                   const SizedBox(height: 8),
                   _buildSummaryRow(
+                    context,
                     'Preço de venda (250g)',
                     model.price250g,
                   ),
                   _buildSummaryRow(
+                    context,
                     'Preço de venda (1kg)',
                     model.finalPricePerKg,
                   ),
                   const SizedBox(height: 8),
                   _buildSummaryRow(
+                    context,
                     'Lucro líquido (R\$/kg)',
                     model.profitPerKg,
                   ),
@@ -206,12 +208,14 @@ class _PricingFormPageState extends State<PricingFormPage> {
                             ? 'Atualizar precificação'
                             : 'Salvar precificação',
                       ),
-                      onPressed: () {
+                      onPressed: () async {
                         final isEditing = widget.editingIndex != null;
 
-                        widget.controller.saveCurrentPricing(
+                        await widget.controller.saveCurrentPricing(
                           indexToUpdate: widget.editingIndex,
                         );
+
+                        if (!mounted) return;
 
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -223,91 +227,12 @@ class _PricingFormPageState extends State<PricingFormPage> {
                           ),
                         );
 
-                        if (Navigator.canPop(context)) {
-                          Navigator.pop(context);
-                        }
+                        Navigator.pop(context);
                       },
                     ),
                   ),
 
                   const SizedBox(height: 32),
-                  Divider(color: Colors.grey.shade300),
-                  const SizedBox(height: 12),
-
-                  // -------------------------
-                  // LISTA DE PRECIFICAÇÕES
-                  // -------------------------
-                  Text(
-                    'Precificações salvas',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 12),
-
-                  if (saved.isEmpty)
-                    Text(
-                      'Nenhuma precificação salva ainda.',
-                      style: TextStyle(color: Colors.grey.shade600),
-                    )
-                  else
-                    ListView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      shrinkWrap: true,
-                      itemCount: saved.length,
-                      itemBuilder: (context, index) {
-                        final p = saved[index];
-                        final price250 = p.price250g;
-
-                        return Card(
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            title: Text(
-                              p.productName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            subtitle: Text(
-                              'Preço 250g: R\$ ${_formatMoney(price250)}',
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit,
-                                      color: Colors.amber),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => PricingFormPage(
-                                          controller: widget.controller,
-                                          editingIndex: index,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Colors.redAccent),
-                                  onPressed: () {
-                                    widget.controller.removeSavedPricing(index);
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
-                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -318,6 +243,7 @@ class _PricingFormPageState extends State<PricingFormPage> {
   }
 
   Widget _buildSummaryRow(
+      BuildContext context,
       String label,
       double value, {
         bool highlight = false,

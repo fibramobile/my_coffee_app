@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'controllers/pricing_controller.dart';
 import 'views/pricing_form_page.dart';
+import 'views/pricing_list_page.dart';
 
 void main() {
   runApp(const CafePrecoApp());
@@ -103,7 +104,9 @@ class CafePrecoApp extends StatelessWidget {
           ),
         ),
       ),
-      home: PricingFormPage(controller: controller),
+
+      // 👉 AGORA A TELA INICIAL É A LISTA
+      home: PricingListPage(controller: controller),
     );
   }
 }
