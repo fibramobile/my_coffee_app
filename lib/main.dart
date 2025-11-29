@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'controllers/pricing_controller.dart';
-import 'views/pricing_form_page.dart';
 import 'views/pricing_list_page.dart';
+import 'views/home_page.dart';
 
 void main() {
   runApp(const CafePrecoApp());
@@ -16,7 +16,7 @@ class CafePrecoApp extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Gestão de Café – Precificação',
+      title: 'Gestão de Café – App',
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
@@ -67,7 +67,7 @@ class CafePrecoApp extends StatelessWidget {
           ),
         ),
 
-        // Cards (custos e lista de produtos)
+        // Cards (custos, lista, dashboard)
         cardTheme: CardTheme(
           color: Colors.white,
           elevation: 2,
@@ -78,7 +78,7 @@ class CafePrecoApp extends StatelessWidget {
           ),
         ),
 
-        // Botão salvar
+        // Botões principais
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFFD4AF37), // dourado
@@ -105,8 +105,8 @@ class CafePrecoApp extends StatelessWidget {
         ),
       ),
 
-      // 👉 AGORA A TELA INICIAL É A LISTA
-      home: PricingListPage(controller: controller),
+      // 👉 Tela principal agora é o dashboard
+      home: HomePage(controller: controller),
     );
   }
 }
