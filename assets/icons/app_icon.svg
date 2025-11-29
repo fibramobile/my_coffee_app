@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fundo kraft claro -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="#F5E9D2"/>
+
+  <!-- Círculo interno para dar profundidade -->
+  <circle cx="512" cy="512" r="340" fill="#FDF9F1"/>
+
+  <!-- Grão de café estilizado -->
+  <g transform="translate(340, 290) scale(1.1)">
+    <path
+      d="M220 0c-92 0-170 78-190 190-20 112 32 230 124 260 92 30 190-50 216-168C396 162 352 0 220 0z"
+      fill="#3C2A21"
+    />
+    <!-- Rachadura central do grão -->
+    <path
+      d="M212 30c-46 78-60 156-42 234 9 38 26 75 50 111"
+      fill="none"
+      stroke="#F5E9D2"
+      stroke-width="16"
+      stroke-linecap="round"
+    />
+  </g>
+
+  <!-- Folha lateral -->
+  <g transform="translate(590, 340) rotate(20)">
+    <path
+      d="M0 120c60-10 110-60 130-120-60 10-110 60-130 120z"
+      fill="#4F7C4F"
+    />
+    <path
+      d="M10 115c35-20 60-45 80-80"
+      fill="none"
+      stroke="#F5E9D2"
+      stroke-width="8"
+      stroke-linecap="round"
+    />
+  </g>
+
+  <!-- Detalhe dourado de “gestão” (gráfico) -->
+  <g transform="translate(290, 650)">
+    <rect x="0" y="60" width="40" height="80" rx="10" fill="#D4AF37"/>
+    <rect x="70" y="40" width="40" height="100" rx="10" fill="#D4AF37"/>
+    <rect x="140" y="10" width="40" height="130" rx="10" fill="#D4AF37"/>
+  </g>
+</svg>
