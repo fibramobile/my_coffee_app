@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/pricing_model.dart';
 import '../models/cost_item.dart';
 
 class PricingController extends ChangeNotifier {
-  static const String _prefsKey = 'saved_pricings';
+  // 🔴 TROQUE ESSA URL PELO ENDPOINT DO SEU SERVIDOR
+  static const String _apiUrl =
+      'https://smapps.16mb.com/fratheli/app/pricings.php';
 
   PricingModel model;
 
@@ -61,7 +63,7 @@ class PricingController extends ChangeNotifier {
           ),
         ],
       ) {
-    _loadFromPrefs();
+    _loadFromServer();
   }
 
   // ------- setters normais -------
@@ -146,46 +148,67 @@ class PricingController extends ChangeNotifier {
       _savedPricings.add(saved);
     }
 
-    await _saveToPrefs();
+    await _syncToServer();
     notifyListeners();
   }
 
   Future<void> removeSavedPricing(int index) async {
     if (index < 0 || index >= _savedPricings.length) return;
     _savedPricings.removeAt(index);
-    await _saveToPrefs();
+    await _syncToServer();
     notifyListeners();
   }
 
-  // ------- SharedPreferences -------
+  // ------- SYNC REMOTA COM PHP -------
 
-  Future<void> _saveToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _loadFromServer() async {
+    try {
+      final uri = Uri.parse(_apiUrl);
+      final resp = await http.get(uri);
 
-    final listMap =
-    _savedPricings.map((p) => p.toJson()).toList();
+      if (resp.statusCode == 200 && resp.body.isNotEmpty) {
+        final decoded = jsonDecode(resp.body);
 
-    final jsonString = jsonEncode(listMap);
-
-    await prefs.setString(_prefsKey, jsonString);
+        if (decoded is List) {
+          _savedPricings
+            ..clear()
+            ..addAll(
+              decoded
+                  .map((e) =>
+                  PricingModel.fromJson(e as Map<String, dynamic>))
+                  .toList(),
+            );
+          notifyListeners();
+        }
+      } else {
+        debugPrint(
+            'Falha ao carregar do servidor: ${resp.statusCode} ${resp.body}');
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar precificações do servidor: $e');
+    }
   }
 
-  Future<void> _loadFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString(_prefsKey);
-
-    if (jsonString == null || jsonString.isEmpty) return;
-
+  Future<void> _syncToServer() async {
     try {
-      final decoded = jsonDecode(jsonString) as List<dynamic>;
-      _savedPricings
-        ..clear()
-        ..addAll(decoded
-            .map((e) => PricingModel.fromJson(e as Map<String, dynamic>)));
+      final uri = Uri.parse(_apiUrl);
 
-      notifyListeners();
+      final listMap = _savedPricings.map((p) => p.toJson()).toList();
+
+      final resp = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode(listMap),
+      );
+
+      if (resp.statusCode != 200) {
+        debugPrint(
+            'Falha ao salvar no servidor: ${resp.statusCode} ${resp.body}');
+      }
     } catch (e) {
-      debugPrint('Erro ao carregar precificações salvas: $e');
+      debugPrint('Erro ao salvar precificações no servidor: $e');
     }
   }
 }
