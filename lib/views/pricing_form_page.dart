@@ -23,9 +23,11 @@ class _PricingFormPageState extends State<PricingFormPage> {
   void initState() {
     super.initState();
 
-    // Se veio um índice de edição, carregamos esses dados
+    // ✅ IMPORTANTE: só carrega o item após o primeiro frame
     if (widget.editingIndex != null) {
-      widget.controller.loadFromSaved(widget.editingIndex!);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.controller.loadFromSaved(widget.editingIndex!);
+      });
     }
   }
 
@@ -34,7 +36,23 @@ class _PricingFormPageState extends State<PricingFormPage> {
     return double.tryParse(cleaned) ?? 0.0;
   }
 
-  /// Define cor visual da margem líquida
+  /// Converte margem líquida (%) desejada em markup equivalente (%)
+  ///
+  /// margemPercent: ex: 40 → 40%
+  /// Fórmula: markup = (margem / (1 - margem)) * 100
+  double _marginToMarkup(double marginPercent) {
+    final m = marginPercent / 100.0;
+
+    if (m <= 0) return 0;
+    if (m >= 0.99) {
+      // evita divisão por zero / markup absurdo
+      return 9999;
+    }
+
+    return (m / (1 - m)) * 100;
+  }
+
+  /// Define cor visual da margem líquida exibida no resumo
   Color getMarginColor(double marginPercent) {
     if (marginPercent >= 40) {
       return Colors.green;
@@ -51,6 +69,7 @@ class _PricingFormPageState extends State<PricingFormPage> {
       animation: widget.controller,
       builder: (context, _) {
         final model = widget.controller.model;
+        final currentMarginPercent = model.profitMargin * 100;
 
         return Scaffold(
           appBar: AppBar(
@@ -86,17 +105,43 @@ class _PricingFormPageState extends State<PricingFormPage> {
                   ),
                   const SizedBox(height: 16),
 
+                  // ------ CAMPO DE MARKUP ------
                   TextFormField(
                     initialValue: model.markupPercent.toStringAsFixed(0),
                     decoration: const InputDecoration(
-                      labelText: 'Margem / Markup desejado (%)',
+                      labelText: 'Markup desejado sobre o custo (%)',
+                      helperText:
+                      'Ex.: 50% → preço = custo × 1,5 (margem ~33%)',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     onChanged: (value) {
-                      widget.controller
-                          .setMarkupPercent(_parseNumber(value));
+                      final markup = _parseNumber(value);
+                      widget.controller.setMarkupPercent(markup);
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ------ CAMPO DE MARGEM LÍQUIDA DESEJADA ------
+                  TextFormField(
+                    initialValue:
+                    currentMarginPercent.toStringAsFixed(1), // margem atual
+                    decoration: const InputDecoration(
+                      labelText: 'Margem líquida desejada (%)',
+                      helperText:
+                      'Ex.: 40% de margem → markup ~67% (aprox.)',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (value) {
+                      final desiredMargin = _parseNumber(value);
+
+                      final newMarkup = _marginToMarkup(desiredMargin);
+
+                      widget.controller.setMarkupPercent(newMarkup);
                     },
                   ),
 
@@ -169,23 +214,23 @@ class _PricingFormPageState extends State<PricingFormPage> {
                     model.profitPerKg,
                   ),
 
-                  // MARGEM LÍQUIDA COLORIDA
+                  // MARGEM LÍQUIDA ATUAL (CALCULADA)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6.0),
                     child: Row(
                       children: [
                         const Expanded(
                           child: Text(
-                            'Margem líquida (%)',
+                            'Margem líquida atual (%)',
                             style: TextStyle(fontSize: 15),
                           ),
                         ),
                         Text(
-                          '${(model.profitMargin * 100).toStringAsFixed(2).replaceAll('.', ',')}%',
+                          '${currentMarginPercent.toStringAsFixed(2).replaceAll('.', ',')}%',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: getMarginColor(model.profitMargin * 100),
+                            color: getMarginColor(currentMarginPercent),
                           ),
                         ),
                       ],
