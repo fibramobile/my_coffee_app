@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_coffee_app/views/sales_clients_page.dart';
 import '../controllers/pricing_controller.dart';
 import 'pricing_list_page.dart';
 
@@ -120,8 +121,16 @@ class HomePage extends StatelessWidget {
                   icon: Icons.point_of_sale,
                   title: 'Vendas & Clientes',
                   subtitle: 'Pedidos, canais, fidelização',
-                  onTap: () => _showComingSoon(context),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SalesClientsPage(),
+                      ),
+                    );
+                  },
                 ),
+
 
                 // 🔥 PRECIFICAÇÃO (FUNCIONAL)
                 _ModuleCard(
