@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/order.dart';
 import '../models/client.dart';
 import '../services/fratheli_api_service.dart';
+import 'order_details_page.dart';
+import 'client_details_page.dart';
 
 class SalesClientsPage extends StatefulWidget {
   const SalesClientsPage({Key? key}) : super(key: key);
@@ -500,7 +502,12 @@ class _SalesClientsPageState extends State<SalesClientsPage>
             child: InkWell(
               borderRadius: BorderRadius.circular(14),
               onTap: () {
-                // futuro: detalhes do pedido
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => OrderDetailsPage(order: order),
+                  ),
+                );
               },
               child: Padding(
                 padding:
@@ -720,8 +727,14 @@ class _SalesClientsPageState extends State<SalesClientsPage>
             elevation: 1,
             child: ListTile(
               onTap: () {
-                // futuro: perfil do cliente + histórico de compras
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ClientDetailsPage(client: c),
+                  ),
+                );
               },
+
               leading: CircleAvatar(
                 backgroundColor: const Color(0xFFD4AF37).withOpacity(0.85),
                 child: Text(
