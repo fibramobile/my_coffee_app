@@ -6,7 +6,8 @@ import '../models/order.dart';
 
 class FratheliApiService {
   static const String _base =
-      'https://smapps.16mb.com/fratheli/site';
+      //'https://smapps.16mb.com/fratheli/site';
+  'https://frathelicafe.com.br/api';
 
   /// Lista de pedidos
   Future<List<Order>> fetchOrders() async {

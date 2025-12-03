@@ -121,6 +121,7 @@ class HomePage extends StatelessWidget {
                   icon: Icons.point_of_sale,
                   title: 'Vendas & Clientes',
                   subtitle: 'Pedidos, canais, fidelização',
+                  highlight: true,
                   onTap: () {
                     Navigator.push(
                       context,
