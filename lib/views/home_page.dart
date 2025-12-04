@@ -3,6 +3,7 @@ import 'package:my_coffee_app/views/roast_page.dart';
 import 'package:my_coffee_app/views/sales_clients_page.dart';
 import 'package:my_coffee_app/views/stock_page.dart';
 import '../controllers/pricing_controller.dart';
+import 'catalog_products_page.dart';
 import 'pricing_list_page.dart';
 
 class HomePage extends StatelessWidget {
@@ -167,6 +168,22 @@ class HomePage extends StatelessWidget {
                     );
                   },
                 ),
+                // CATÁLOGO DE PRODUTOS (NOVO)
+                _ModuleCard(
+                  icon: Icons.storefront,
+                  title: 'Catálogo de Produtos',
+                  subtitle: 'Controlar produtos visíveis no site',
+                  highlight: true, // aparece como módulo ativo
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const CatalogProductsPage(),
+                      ),
+                    );
+                  },
+                ),
+
               ],
             ),
           ],
