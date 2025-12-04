@@ -2,39 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
-/// Modelo de item de estoque
-class StockItem {
-  String name;        // Ex: "Bugia 250g"
-  String unit;        // Ex: "pacotes", "kg", "sacas"
-  double quantity;    // Quantidade atual
-  double minQuantity; // Estoque mínimo desejado
-
-  StockItem({
-    required this.name,
-    required this.unit,
-    required this.quantity,
-    required this.minQuantity,
-  });
-
-  factory StockItem.fromJson(Map<String, dynamic> json) {
-    return StockItem(
-      name: json['name'] as String? ?? '',
-      unit: json['unit'] as String? ?? 'unid.',
-      quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
-      minQuantity: (json['minQuantity'] as num?)?.toDouble() ?? 0,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'unit': unit,
-      'quantity': quantity,
-      'minQuantity': minQuantity,
-    };
-  }
-}
+import '../models/stock_item.dart';
 
 class StockPage extends StatefulWidget {
   const StockPage({Key? key}) : super(key: key);
@@ -49,29 +17,34 @@ class _StockPageState extends State<StockPage> {
   bool _showOnlyLow = false;
   bool _isLoading = true;
   bool _isSaving = false;
+  String _typeFilter = 'todos'; // 'todos', 'verde', 'torrado', 'outro'
 
-// Endpoints
   static const _loadEndpoint =
       'https://smapps.16mb.com/fratheli/app/stock/get_stock.php';
   static const _saveEndpoint =
       'https://smapps.16mb.com/fratheli/app/stock/save_stock.php';
 
-
   // ---------- HELPERS ----------
 
   List<StockItem> get _visibleItems {
-    if (!_showOnlyLow) return _items;
-    return _items.where((i) => i.quantity <= i.minQuantity).toList();
+    Iterable<StockItem> list = _items;
+
+    if (_typeFilter != 'todos') {
+      list = list.where((i) => i.type == _typeFilter);
+    }
+    if (_showOnlyLow) {
+      list = list.where((i) => i.quantity <= i.minQuantity);
+    }
+
+    return list.toList();
   }
 
   String _format(double value) {
-    if (value % 1 == 0) {
-      return value.toStringAsFixed(0);
-    }
+    if (value % 1 == 0) return value.toStringAsFixed(0);
     return value.toStringAsFixed(1);
   }
 
-  // ---------- CARREGAR JSON REMOTO (COM ANTI-CACHE) ----------
+  // ---------- CARREGAR JSON (via PHP com CORS) ----------
 
   @override
   void initState() {
@@ -80,12 +53,9 @@ class _StockPageState extends State<StockPage> {
   }
 
   Future<void> _loadFromRemote() async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // ainda uso anti-cache pra garantir que não pegue versão antiga
       final now = DateTime.now().millisecondsSinceEpoch.toString();
       final uri = Uri.parse(_loadEndpoint).replace(queryParameters: {'v': now});
 
@@ -93,8 +63,8 @@ class _StockPageState extends State<StockPage> {
 
       if (response.statusCode == 200 && response.body.trim().isNotEmpty) {
         final decoded = jsonDecode(response.body);
-
         final itemsJson = decoded['items'];
+
         if (itemsJson is List) {
           _items
             ..clear()
@@ -109,19 +79,14 @@ class _StockPageState extends State<StockPage> {
       } else {
         _items.clear();
       }
-    } catch (e) {
+    } catch (_) {
       _items.clear();
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-
-  // ---------- MONTAR JSON E SALVAR NO SERVIDOR ----------
+  // ---------- SALVAR JSON NO SERVIDOR ----------
 
   Map<String, dynamic> _buildDataObject() {
     return {
@@ -131,38 +96,27 @@ class _StockPageState extends State<StockPage> {
   }
 
   Future<void> _saveToServer({bool showSnack = true}) async {
-    setState(() {
-      _isSaving = true;
-    });
+    setState(() => _isSaving = true);
 
     try {
       final data = _buildDataObject();
-      final jsonString = jsonEncode(data);
-
       final uri = Uri.parse(_saveEndpoint);
       final response = await http.post(
         uri,
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-        },
-        body: jsonString,
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode(data),
       );
 
-      if (response.statusCode == 200) {
-        if (showSnack && mounted) {
+      if (showSnack && mounted) {
+        if (response.statusCode == 200) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Estoque salvo no servidor.'),
-            ),
+            const SnackBar(content: Text('Estoque salvo no servidor.')),
           );
-        }
-      } else {
-        if (showSnack && mounted) {
+        } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Falha ao salvar no servidor (HTTP ${response.statusCode}).',
-              ),
+                  'Falha ao salvar no servidor (HTTP ${response.statusCode}).'),
             ),
           );
         }
@@ -170,62 +124,51 @@ class _StockPageState extends State<StockPage> {
     } catch (e) {
       if (showSnack && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao salvar no servidor: $e'),
-          ),
+          SnackBar(content: Text('Erro ao salvar no servidor: $e')),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
-      }
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   void _showExportJsonDialog() {
-    final data = _buildDataObject();
     const encoder = JsonEncoder.withIndent('  ');
-    final jsonString = encoder.convert(data);
+    final jsonString = encoder.convert(_buildDataObject());
 
     showDialog(
       context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text('JSON do estoque'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                jsonString,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                ),
-              ),
+      builder: (_) => AlertDialog(
+        title: const Text('JSON do estoque'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              jsonString,
+              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
             ),
           ),
-          actions: [
-            TextButton(
-              child: const Text('Fechar'),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Fechar'),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
     );
   }
 
-  // ---------- AÇÕES ----------
+  // ---------- AÇÕES (CRUD) ----------
 
-  void _addItem() {
+  Future<void> _addItem() async {
     final nameController = TextEditingController();
-    final unitController = TextEditingController(text: 'pacotes');
+    final unitController = TextEditingController(text: 'kg');
     final quantityController = TextEditingController(text: '0');
     final minQuantityController = TextEditingController(text: '0');
+    String selectedType = 'torrado'; // padrão: produtos finalizados
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -238,14 +181,37 @@ class _StockPageState extends State<StockPage> {
                   controller: nameController,
                   decoration: const InputDecoration(
                     labelText: 'Nome do item',
-                    hintText: 'Ex: Bugia 250g',
+                    hintText: 'Ex: Microlote 01',
                   ),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: selectedType,
+                  decoration: const InputDecoration(labelText: 'Tipo'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'verde',
+                      child: Text('Café verde'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'torrado',
+                      child: Text('Café torrado'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'outro',
+                      child: Text('Outros (mel, insumos...)'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    selectedType = v;
+                  },
                 ),
                 TextField(
                   controller: unitController,
                   decoration: const InputDecoration(
                     labelText: 'Unidade',
-                    hintText: 'Ex: pacotes, kg, sacas',
+                    hintText: 'kg, pacotes, sacas…',
                   ),
                 ),
                 TextField(
@@ -272,14 +238,16 @@ class _StockPageState extends State<StockPage> {
             ),
             ElevatedButton(
               child: const Text('Salvar'),
-              onPressed: () async {
+              onPressed: () {
                 final name = nameController.text.trim();
                 if (name.isEmpty) return;
 
-                final quantity =
-                    double.tryParse(quantityController.text.replaceAll(',', '.')) ?? 0;
-                final minQty =
-                    double.tryParse(minQuantityController.text.replaceAll(',', '.')) ?? 0;
+                final quantity = double.tryParse(
+                    quantityController.text.replaceAll(',', '.')) ??
+                    0;
+                final minQty = double.tryParse(
+                    minQuantityController.text.replaceAll(',', '.')) ??
+                    0;
 
                 setState(() {
                   _items.add(
@@ -290,116 +258,31 @@ class _StockPageState extends State<StockPage> {
                           : unitController.text.trim(),
                       quantity: quantity,
                       minQuantity: minQty,
+                      type: selectedType,
                     ),
                   );
                 });
 
                 Navigator.pop(context);
-
-                await _saveToServer();
               },
             ),
           ],
         );
       },
     );
+
+    await _saveToServer();
   }
 
-  void _editQuantity(StockItem item) {
-    final quantityController =
-    TextEditingController(text: _format(item.quantity));
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Ajustar estoque - ${item.name}'),
-          content: TextField(
-            controller: quantityController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Quantidade atual',
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Cancelar'),
-              onPressed: () => Navigator.pop(context),
-            ),
-            ElevatedButton(
-              child: const Text('Salvar'),
-              onPressed: () async {
-                final value =
-                double.tryParse(quantityController.text.replaceAll(',', '.'));
-                if (value == null) return;
-
-                setState(() {
-                  item.quantity = value;
-                });
-
-                Navigator.pop(context);
-
-                await _saveToServer(showSnack: false);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _editMinQuantity(StockItem item) {
-    final minQuantityController =
-    TextEditingController(text: _format(item.minQuantity));
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Estoque mínimo - ${item.name}'),
-          content: TextField(
-            controller: minQuantityController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Estoque mínimo desejado',
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Cancelar'),
-              onPressed: () => Navigator.pop(context),
-            ),
-            ElevatedButton(
-              child: const Text('Salvar'),
-              onPressed: () async {
-                final value =
-                double.tryParse(minQuantityController.text.replaceAll(',', '.'));
-                if (value == null) return;
-
-                setState(() {
-                  item.minQuantity = value;
-                });
-
-                Navigator.pop(context);
-
-                await _saveToServer(showSnack: false);
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _editItem(StockItem item) {
+  Future<void> _editItem(StockItem item) async {
     final nameController = TextEditingController(text: item.name);
     final unitController = TextEditingController(text: item.unit);
-    final quantityController =
-    TextEditingController(text: _format(item.quantity));
+    final quantityController = TextEditingController(text: _format(item.quantity));
     final minQuantityController =
     TextEditingController(text: _format(item.minQuantity));
+    String selectedType = item.type;
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -410,29 +293,46 @@ class _StockPageState extends State<StockPage> {
               children: [
                 TextField(
                   controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome do item',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Nome do item'),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: selectedType,
+                  decoration: const InputDecoration(labelText: 'Tipo'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'verde',
+                      child: Text('Café verde'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'torrado',
+                      child: Text('Café torrado'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'outro',
+                      child: Text('Outros'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    selectedType = v;
+                  },
                 ),
                 TextField(
                   controller: unitController,
-                  decoration: const InputDecoration(
-                    labelText: 'Unidade',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Unidade'),
                 ),
                 TextField(
                   controller: quantityController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Quantidade atual',
-                  ),
+                  decoration:
+                  const InputDecoration(labelText: 'Quantidade atual'),
                 ),
                 TextField(
                   controller: minQuantityController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Estoque mínimo',
-                  ),
+                  decoration:
+                  const InputDecoration(labelText: 'Estoque mínimo'),
                 ),
               ],
             ),
@@ -444,17 +344,15 @@ class _StockPageState extends State<StockPage> {
             ),
             ElevatedButton(
               child: const Text('Salvar'),
-              onPressed: () async {
+              onPressed: () {
                 final name = nameController.text.trim();
                 if (name.isEmpty) return;
 
                 final qty = double.tryParse(
-                  quantityController.text.replaceAll(',', '.'),
-                ) ??
+                    quantityController.text.replaceAll(',', '.')) ??
                     item.quantity;
                 final minQty = double.tryParse(
-                  minQuantityController.text.replaceAll(',', '.'),
-                ) ??
+                    minQuantityController.text.replaceAll(',', '.')) ??
                     item.minQuantity;
 
                 setState(() {
@@ -464,23 +362,22 @@ class _StockPageState extends State<StockPage> {
                       : unitController.text.trim();
                   item.quantity = qty;
                   item.minQuantity = minQty;
+                  item.type = selectedType;
                 });
 
                 Navigator.pop(context);
-
-                await _saveToServer(showSnack: false);
               },
             ),
           ],
         );
       },
     );
+
+    await _saveToServer(showSnack: false);
   }
 
   Future<void> _deleteItem(StockItem item) async {
-    setState(() {
-      _items.remove(item);
-    });
+    setState(() => _items.remove(item));
     await _saveToServer(showSnack: false);
   }
 
@@ -514,16 +411,12 @@ class _StockPageState extends State<StockPage> {
           ),
           IconButton(
             tooltip: _showOnlyLow
-                ? 'Mostrar todos os itens'
-                : 'Mostrar só itens com estoque baixo',
-            icon: Icon(
-              _showOnlyLow ? Icons.filter_alt_off : Icons.filter_alt,
-            ),
-            onPressed: () {
-              setState(() {
-                _showOnlyLow = !_showOnlyLow;
-              });
-            },
+                ? 'Mostrar todos'
+                : 'Mostrar só com estoque baixo',
+            icon: Icon(_showOnlyLow ? Icons.filter_alt_off : Icons.filter_alt),
+            onPressed: () => setState(() {
+              _showOnlyLow = !_showOnlyLow;
+            }),
           ),
         ],
       ),
@@ -554,55 +447,66 @@ class _StockPageState extends State<StockPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Resumo do estoque',
-                            style: theme.textTheme.titleMedium,
-                          ),
+                          Text('Resumo do estoque',
+                              style: theme.textTheme.titleMedium),
                           const SizedBox(height: 4),
                           Text(
-                            '${_items.length} itens cadastrados · $lowCount com estoque baixo',
+                            '${_items.length} itens · $lowCount com estoque baixo',
                             style: theme.textTheme.bodySmall
                                 ?.copyWith(color: Colors.grey[700]),
                           ),
                         ],
                       ),
                     ),
-                    if (lowCount > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.redAccent,
-                            width: 0.8,
-                          ),
-                        ),
-                        child: Text(
-                          'Repor',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.red[700],
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+
+            // Filtros por tipo
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Todos'),
+                    selected: _typeFilter == 'todos',
+                    onSelected: (_) =>
+                        setState(() => _typeFilter = 'todos'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Café verde'),
+                    selected: _typeFilter == 'verde',
+                    onSelected: (_) =>
+                        setState(() => _typeFilter = 'verde'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Café torrado'),
+                    selected: _typeFilter == 'torrado',
+                    onSelected: (_) =>
+                        setState(() => _typeFilter = 'torrado'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Outros'),
+                    selected: _typeFilter == 'outro',
+                    onSelected: (_) =>
+                        setState(() => _typeFilter = 'outro'),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
 
             Expanded(
               child: _visibleItems.isEmpty
                   ? Center(
                 child: Text(
-                  'Nenhum registro de estoque encontrado.\n'
-                      'Toque em "Novo item" para cadastrar o primeiro.',
+                  'Nenhum registro de estoque.\n'
+                      'Toque em "Novo item" para começar.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium,
                 ),
@@ -621,9 +525,36 @@ class _StockPageState extends State<StockPage> {
                     child: ListTile(
                       title: Row(
                         children: [
-                          Expanded(child: Text(item.name)),
+                          Expanded(
+                            child: Text(
+                              item.name,
+                              style: TextStyle(
+                                fontWeight: item.type == 'verde'
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          if (item.type == 'verde')
+                            const Padding(
+                              padding: EdgeInsets.only(left: 4),
+                              child: Icon(
+                                Icons.eco,
+                                size: 16,
+                              ),
+                            ),
+                          if (item.type == 'torrado')
+                            const Padding(
+                              padding: EdgeInsets.only(left: 4),
+                              child: Icon(
+                                Icons.local_fire_department,
+                                size: 16,
+                              ),
+                            ),
                           if (isLow)
                             Container(
+                              margin:
+                              const EdgeInsets.only(left: 6),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
                                 vertical: 2,
@@ -648,8 +579,7 @@ class _StockPageState extends State<StockPage> {
                         CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Qtd: ${_format(item.quantity)} ${item.unit}',
-                          ),
+                              'Qtd: ${_format(item.quantity)} ${item.unit}'),
                           Text(
                             'Mínimo: ${_format(item.minQuantity)} ${item.unit}',
                             style: TextStyle(
@@ -668,10 +598,6 @@ class _StockPageState extends State<StockPage> {
                         onSelected: (value) {
                           if (value == 'edit') {
                             _editItem(item);
-                          } else if (value == 'qtd') {
-                            _editQuantity(item);
-                          } else if (value == 'min') {
-                            _editMinQuantity(item);
                           } else if (value == 'del') {
                             _deleteItem(item);
                           }
@@ -680,14 +606,6 @@ class _StockPageState extends State<StockPage> {
                           PopupMenuItem(
                             value: 'edit',
                             child: Text('Editar item'),
-                          ),
-                          PopupMenuItem(
-                            value: 'qtd',
-                            child: Text('Ajustar quantidade'),
-                          ),
-                          PopupMenuItem(
-                            value: 'min',
-                            child: Text('Definir estoque mínimo'),
                           ),
                           PopupMenuItem(
                             value: 'del',

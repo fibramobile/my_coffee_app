@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_coffee_app/views/roast_page.dart';
 import 'package:my_coffee_app/views/sales_clients_page.dart';
 import 'package:my_coffee_app/views/stock_page.dart';
 import '../controllers/pricing_controller.dart';
@@ -105,9 +106,18 @@ class HomePage extends StatelessWidget {
                 _ModuleCard(
                   icon: Icons.local_fire_department,
                   title: 'Torra & Lotes',
-                  subtitle: 'Perfis de torra e microlotes',
-                  onTap: () => _showComingSoon(context),
+                  subtitle: 'Transforme café verde em torrado',
+                  highlight: true,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const RoastPage(),
+                      ),
+                    );
+                  },
                 ),
+
 
                 // ESTOQUE & ARMAZÉM
                 _ModuleCard(
