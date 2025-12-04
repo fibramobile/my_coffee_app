@@ -43,6 +43,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     setState(() {
       _loadingOrders = true;
       _errorOrders = null;
+      _attachClientsToOrders();
     });
 
     try {
@@ -73,6 +74,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     setState(() {
       _loadingClients = true;
       _errorClients = null;
+      _attachClientsToOrders();
     });
 
     try {
@@ -128,6 +130,32 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     }
   }
 
+  void _attachClientsToOrders() {
+    if (_clients.isEmpty || _orders.isEmpty) return;
+
+    final mapClients = {for (final c in _clients) c.id: c};
+    for (final o in _orders) {
+      o.client = mapClients[o.clientId];
+    }
+  }
+
+  String? extractUfFromAddress(String address) {
+    const ufs = [
+      'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
+      'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO',
+    ];
+
+    final upper = address.toUpperCase();
+
+    for (final uf in ufs) {
+      final regex = RegExp(r'\b$uf\b'); // casa a sigla "solta"
+      if (regex.hasMatch(upper)) {
+        return uf;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -170,6 +198,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
   // ---------------------------------------------------------------------------
   // DASHBOARD
   // ---------------------------------------------------------------------------
+  /*
   Widget _buildDashboardTab() {
     if ((_loadingOrders || _loadingClients) &&
         _orders.isEmpty &&
@@ -424,6 +453,336 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                   if (enviosList.isEmpty)
                     const Text(
                       'Ainda não há pedidos com UF informado.',
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: enviosList.map((e) {
+                        return Chip(
+                          backgroundColor:
+                          const Color(0xFFEEE3C7).withOpacity(0.7),
+                          label: Text(
+                            '${e.key} · ${e.value} ${e.value == 1 ? 'pedido' : 'pedidos'}',
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  */
+  Widget _buildDashboardTab() {
+    if ((_loadingOrders || _loadingClients) &&
+        _orders.isEmpty &&
+        _clients.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorOrders != null && _orders.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Erro ao carregar dados de pedidos:\n$_errorOrders',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    final now = DateTime.now();
+
+    // Pedidos pagos no mês atual
+    final paidThisMonth = _orders.where((o) {
+      if (o.createdAt == null) return false;
+      final s = o.paymentStatus.toUpperCase();
+      return s == 'PAGO' &&
+          o.createdAt!.year == now.year &&
+          o.createdAt!.month == now.month;
+    }).toList();
+
+    final totalSoldThisMonth = paidThisMonth.fold<double>(
+      0.0,
+          (sum, o) => sum + o.total,
+    );
+
+    // NOVO: separar quanto é produto e quanto é frete (somente pedidos pagos no mês)
+    double totalProdutosMes = 0.0;
+    double totalFreteMes = 0.0;
+
+    for (final o in paidThisMonth) {
+      // soma dos itens (valor de produto)
+      final totalItens = o.items.fold<double>(
+        0.0,
+            (sum, item) => sum + (item.unitPrice * item.qty),
+      );
+      totalProdutosMes += totalItens;
+
+      // ⚠️ Trocar 'shippingCost' pelo campo real de frete da sua Order
+      final frete = o.shipping;
+      totalFreteMes += frete;
+    }
+
+    // Total pendente (tudo que não é PAGO / CANCELADO)
+    final pendingOrders = _orders.where((o) {
+      final s = o.paymentStatus.toUpperCase();
+      return s != 'PAGO' && s != 'CANCELADO';
+    }).toList();
+
+    final totalPending = pendingOrders.fold<double>(
+      0.0,
+          (sum, o) => sum + o.total,
+    );
+
+    // Ticket médio (considerando só pedidos pagos NO MÊS)
+    final ticketMedio = paidThisMonth.isEmpty
+        ? 0.0
+        : paidThisMonth.fold<double>(
+      0.0,
+          (sum, o) => sum + o.total,
+    ) /
+        paidThisMonth.length;
+
+    // RANKING de produtos (só pedidos PAGOS)
+    final Map<String, _ProductAgg> produtosAgg = {};
+    for (final o in _orders.where(
+            (o) => o.paymentStatus.toUpperCase() == 'PAGO')) {
+      for (final item in o.items) {
+        final key = item.sku;
+        final existing = produtosAgg[key];
+        if (existing == null) {
+          produtosAgg[key] = _ProductAgg(
+            sku: item.sku,
+            name: item.name,
+            qty: item.qty,
+            total: item.qty * item.unitPrice,
+          );
+        } else {
+          existing.qty += item.qty;
+          existing.total += item.qty * item.unitPrice;
+        }
+      }
+    }
+
+    final produtosList = produtosAgg.values.toList()
+      ..sort((a, b) => b.qty.compareTo(a.qty));
+
+    // Top 10 produtos mais vendidos
+    final topProdutos = produtosList.take(10).toList();
+
+    // Mapa de envios por UF (apenas pedidos PAGOS)
+    // Mapa de envios por UF (apenas pedidos PAGOS)
+    final Map<String, int> enviosPorUf = {};
+
+    for (final o in _orders) {
+      if (o.paymentStatus.toUpperCase() != 'PAGO') continue;
+
+      // Usa diretamente o campo state do Address
+      final uf = (o.client?.address.state ?? '').trim().toUpperCase();
+      if (uf.isEmpty) continue;
+
+      enviosPorUf[uf] = (enviosPorUf[uf] ?? 0) + 1;
+    }
+
+    final enviosList = enviosPorUf.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+
+    return RefreshIndicator(
+      onRefresh: _loadAll,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          // RESUMO DO MÊS
+          Card(
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Resumo do mês',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Referência: ${now.month.toString().padLeft(2, '0')}/${now.year}',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 12),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      // em telas estreitas, empilha
+                      final isNarrow = constraints.maxWidth < 600;
+                      if (isNarrow) {
+                        return Column(
+                          children: [
+                            _DashboardNumber(
+                              label: 'Total vendido (PAGO)',
+                              value: _formatCurrency(totalSoldThisMonth),
+                            ),
+                            const SizedBox(height: 12),
+                            _DashboardNumber(
+                              label: 'Total pendente',
+                              value: _formatCurrency(totalPending),
+                            ),
+                            const SizedBox(height: 12),
+                            _DashboardNumber(
+                              label: 'Ticket médio (mês)',
+                              value: _formatCurrency(ticketMedio),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          _DashboardNumber(
+                            label: 'Total vendido (PAGO)',
+                            value: _formatCurrency(totalSoldThisMonth),
+                          ),
+                          const SizedBox(width: 16),
+                          _DashboardNumber(
+                            label: 'Total pendente',
+                            value: _formatCurrency(totalPending),
+                          ),
+                          const SizedBox(width: 16),
+                          _DashboardNumber(
+                            label: 'Ticket médio (mês)',
+                            value: _formatCurrency(ticketMedio),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // NOVO: Quebra Produtos x Frete
+                  Row(
+                    children: [
+                      _DashboardNumber(
+                        label: 'Produtos (PAGO)',
+                        value: _formatCurrency(totalProdutosMes),
+                      ),
+                      const SizedBox(width: 16),
+                      _DashboardNumber(
+                        label: 'Frete (PAGO)',
+                        value: _formatCurrency(totalFreteMes),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // PRODUTOS MAIS VENDIDOS (ranking)
+          Card(
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Produtos mais vendidos',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  if (topProdutos.isEmpty)
+                    const Text(
+                      'Nenhum pedido pago ainda para calcular produtos.',
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: topProdutos.length,
+                      separatorBuilder: (_, __) =>
+                      const Divider(height: 12, thickness: 0.3),
+                      itemBuilder: (context, index) {
+                        final p = topProdutos[index];
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: CircleAvatar(
+                            radius: 14,
+                            child: Text(
+                              '${index + 1}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                          title: Text(
+                            p.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            'SKU: ${p.sku}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          trailing: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '${p.qty} ${p.qty == 1 ? 'unidade' : 'unidades'}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _formatCurrency(p.total),
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // MAPA DE ENVIOS (por UF)
+          Card(
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Mapa de envios por UF',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  if (enviosList.isEmpty)
+                    const Text(
+                      'Ainda não há pedidos pagos com UF informado.',
                     )
                   else
                     Wrap(
