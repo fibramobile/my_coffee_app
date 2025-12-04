@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:my_coffee_app/views/sales_clients_page.dart';
+import 'package:my_coffee_app/views/stock_page.dart';
 import '../controllers/pricing_controller.dart';
 import 'pricing_list_page.dart';
 
@@ -113,7 +114,15 @@ class HomePage extends StatelessWidget {
                   icon: Icons.inventory_2,
                   title: 'Estoque & Armazém',
                   subtitle: 'Sacas, big bags, controle',
-                  onTap: () => _showComingSoon(context),
+                  highlight: true, // mostra como "Ativo"
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const StockPage(),
+                      ),
+                    );
+                  },
                 ),
 
                 // VENDAS & CLIENTES
