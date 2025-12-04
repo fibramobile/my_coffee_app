@@ -64,6 +64,41 @@ class FratheliApiService {
     return Order.fromJson(data['order']);
   }
 
+  Future<Order> updateShippingStatus({
+    required String orderId,
+    required String shippingStatus,
+  }) async {
+    // pode usar o mesmo api.php com outra action
+    final uri = Uri.parse('$_base/api.php?action=update-shipping');
+
+    final body = jsonEncode({
+      'orderId': orderId,
+      'shippingStatus': shippingStatus,
+    });
+
+    final res = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: body,
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(
+        'Erro HTTP ${res.statusCode} ao atualizar status de envio',
+      );
+    }
+
+    final data = jsonDecode(res.body);
+
+    if (data['success'] != true) {
+      throw Exception('Falha na API: ${data['error'] ?? 'erro desconhecido'}');
+    }
+
+    // API deve devolver `order` atualizado
+    return Order.fromJson(data['order']);
+  }
+
+
   /// Lista de clientes
   Future<List<Client>> fetchClients() async {
     final uri = Uri.parse('$_base/clients_api.php'); // 👈 mudou

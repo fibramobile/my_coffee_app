@@ -19,7 +19,9 @@ class PricingListPage extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final saved = controller.savedPricings;
+        final saved = [...controller.savedPricings];
+        saved.sort((a, b) => a.price250g.compareTo(b.price250g));
+
 
         return Scaffold(
           appBar: AppBar(
@@ -27,7 +29,7 @@ class PricingListPage extends StatelessWidget {
             centerTitle: true,
           ),
           body: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.only(top: 16, bottom: 120, left: 16, right: 16),
             child: saved.isEmpty
                 ? Center(
               child: Text(

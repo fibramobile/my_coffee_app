@@ -17,7 +17,7 @@ class _StockPageState extends State<StockPage> {
   bool _showOnlyLow = false;
   bool _isLoading = true;
   bool _isSaving = false;
-  String _typeFilter = 'todos'; // 'todos', 'verde', 'torrado', 'outro'
+  String _typeFilter = 'pacotes'; // 'todos', 'verde', 'torrado', 'outro'
 
   static const _loadEndpoint =
       'https://smapps.16mb.com/fratheli/app/stock/get_stock.php';
@@ -198,6 +198,10 @@ class _StockPageState extends State<StockPage> {
                       child: Text('Café torrado'),
                     ),
                     DropdownMenuItem(
+                      value: 'pacotes',
+                      child: Text('Pacotes'),
+                    ),
+                    DropdownMenuItem(
                       value: 'outro',
                       child: Text('Outros (mel, insumos...)'),
                     ),
@@ -307,6 +311,10 @@ class _StockPageState extends State<StockPage> {
                     DropdownMenuItem(
                       value: 'torrado',
                       child: Text('Café torrado'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'pacotes',
+                      child: Text('Pacotes'),
                     ),
                     DropdownMenuItem(
                       value: 'outro',
@@ -476,6 +484,12 @@ class _StockPageState extends State<StockPage> {
                     selected: _typeFilter == 'todos',
                     onSelected: (_) =>
                         setState(() => _typeFilter = 'todos'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Pacotes'),
+                    selected: _typeFilter == 'pacotes',
+                    onSelected: (_) =>
+                        setState(() => _typeFilter = 'pacotes'),
                   ),
                   ChoiceChip(
                     label: const Text('Café verde'),
