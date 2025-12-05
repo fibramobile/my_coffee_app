@@ -19,9 +19,16 @@ class PricingListPage extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final saved = [...controller.savedPricings];
-        saved.sort((a, b) => a.price250g.compareTo(b.price250g));
+        // Mapeia: índice original + objeto
+        final entries = controller.savedPricings
+            .asMap()
+            .entries
+            .toList();
 
+        // Ordena pela price250g, mas sem mexer na lista do controller
+        entries.sort(
+              (a, b) => a.value.price250g.compareTo(b.value.price250g),
+        );
 
         return Scaffold(
           appBar: AppBar(
@@ -30,7 +37,7 @@ class PricingListPage extends StatelessWidget {
           ),
           body: Padding(
             padding: const EdgeInsets.only(top: 16, bottom: 120, left: 16, right: 16),
-            child: saved.isEmpty
+            child: entries.isEmpty
                 ? Center(
               child: Text(
                 'Nenhuma precificação salva ainda.\n\nToque no botão + para criar a primeira.',
@@ -42,9 +49,12 @@ class PricingListPage extends StatelessWidget {
               ),
             )
                 : ListView.builder(
-              itemCount: saved.length,
+              itemCount: entries.length,
               itemBuilder: (context, index) {
-                final p = saved[index];
+                final entry = entries[index];
+                final originalIndex = entry.key; // índice na lista original
+                final p = entry.value;
+
                 final price250 = p.price250g;
                 final marginPercent = p.profitMargin * 100;
 
@@ -95,24 +105,31 @@ class PricingListPage extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.edit, color: Colors.amber),
                           onPressed: () {
+                            for (int i = 0; i < controller.savedPricings.length; i++) {
+                              final item = controller.savedPricings[i];
+                            }
+                            // 👉 já carrega o modelo ANTES de navegar
+                            controller.loadFromSaved(originalIndex);
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) => PricingFormPage(
                                   controller: controller,
-                                  editingIndex: index,
+                                  editingIndex: originalIndex,
                                 ),
                               ),
                             );
                           },
                         ),
+
+
                         IconButton(
                           icon: const Icon(
                             Icons.delete_outline,
                             color: Colors.redAccent,
                           ),
                           onPressed: () {
-                            controller.removeSavedPricing(index);
+                            controller.removeSavedPricing(originalIndex);
                           },
                         ),
                       ],
@@ -122,8 +139,6 @@ class PricingListPage extends StatelessWidget {
               },
             ),
           ),
-
-          // Botão flutuante para criar nova precificação
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () {
               Navigator.push(
@@ -143,4 +158,5 @@ class PricingListPage extends StatelessWidget {
       },
     );
   }
+
 }

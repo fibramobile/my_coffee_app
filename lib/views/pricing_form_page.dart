@@ -23,11 +23,12 @@ class _PricingFormPageState extends State<PricingFormPage> {
   void initState() {
     super.initState();
 
-    // ✅ IMPORTANTE: só carrega o item após o primeiro frame
     if (widget.editingIndex != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.controller.loadFromSaved(widget.editingIndex!);
-      });
+      final m = widget.controller.model;
+    } else {
+      debugPrint('FORM: nova precificação');
+      // Se você tiver um método para limpar o modelo, pode chamar aqui:
+      // widget.controller.resetCurrentPricing();
     }
   }
 
