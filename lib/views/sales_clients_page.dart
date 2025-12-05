@@ -1139,6 +1139,45 @@ class _SalesClientsPageState extends State<SalesClientsPage>
   }
   */
 
+  Future<void> _confirmAndDeleteOrder(Order order) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Excluir pedido?'),
+          content: Text(
+            'Tem certeza que deseja excluir o pedido ${order.id}?\n'
+                'Essa ação não pode ser desfeita.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text(
+                'Excluir',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    // 🔥 Aqui exclui só da lista local
+    setState(() {
+      _orders.removeWhere((o) => o.id == order.id);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Pedido removido da lista.')),
+    );
+  }
+
   Widget _buildOrdersTab() {
     if (_loadingOrders && _orders.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -1340,6 +1379,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                               const SizedBox(width: 4),
 
                               // Menu para alterar status de envio
+            /*
                               PopupMenuButton<String>(
                                 tooltip: 'Alterar status de envio',
                                 onSelected: (value) {
@@ -1383,6 +1423,66 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                                   size: 18,
                                 ),
                               ),
+                              */
+                              PopupMenuButton<String>(
+                                tooltip: 'Opções do pedido',
+                                onSelected: (value) {
+                                  if (value == '_DELETE') {
+                                    _confirmAndDeleteOrder(order);
+                                  } else {
+                                    _updateOrderShippingStatus(order, value);
+                                  }
+                                },
+                                itemBuilder: (context) {
+                                  final List<PopupMenuEntry<String>> items = [];
+
+                                  if (!pagamentoPago) {
+                                    items.add(
+                                      const PopupMenuItem(
+                                        value: 'AGUARDANDO_PAGAMENTO',
+                                        child: Text('Aguardando pagamento'),
+                                      ),
+                                    );
+                                  } else {
+                                    items.addAll(const [
+                                      PopupMenuItem(
+                                        value: 'EM_SEPARACAO',
+                                        child: Text('Em separação'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'ENVIADO',
+                                        child: Text('Enviado'),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'ENTREGUE',
+                                        child: Text('Entregue'),
+                                      ),
+                                    ]);
+                                  }
+
+                                  // Só deixa excluir se não estiver pago (ex.: pedidos de teste)
+                                  if (!pagamentoPago) {
+                                    items.add(const PopupMenuDivider());
+                                    items.add(
+                                      const PopupMenuItem(
+                                        value: '_DELETE',
+                                        child: Text(
+                                          'Excluir pedido',
+                                          style: TextStyle(color: Colors.red),
+                                        ),
+                                      ),
+                                    );
+                                  }
+
+                                  return items;
+                                },
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  size: 18,
+                                ),
+                              ),
+
+
                             ],
                           ),
 

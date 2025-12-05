@@ -9,6 +9,10 @@ class FratheliApiService {
       //'https://smapps.16mb.com/fratheli/site';
   'https://frathelicafe.com.br/api';
 
+  final http.Client _client;
+
+  FratheliApiService({http.Client? client}) : _client = client ?? http.Client();
+
   /// Lista de pedidos
   Future<List<Order>> fetchOrders() async {
     final uri = Uri.parse('$_base/orders_api.php'); // 👈 mudou
@@ -64,6 +68,7 @@ class FratheliApiService {
     return Order.fromJson(data['order']);
   }
 
+
   Future<Order> updateShippingStatus({
     required String orderId,
     required String shippingStatus,
@@ -97,6 +102,20 @@ class FratheliApiService {
     // API deve devolver `order` atualizado
     return Order.fromJson(data['order']);
   }
+
+  Future<void> deleteOrder(String orderId) async {
+    final uri = Uri.parse('https://frathelicafe.com.br/api/delete_order.php');
+
+    final resp = await http.post(uri, body: {
+      'orderId': orderId,
+    });
+
+    if (resp.statusCode != 200 && resp.statusCode != 204) {
+      throw Exception('Falha ao excluir pedido (HTTP ${resp.statusCode}).');
+    }
+  }
+
+
 
 
   /// Lista de clientes
