@@ -1168,14 +1168,23 @@ class _SalesClientsPageState extends State<SalesClientsPage>
 
     if (confirmed != true) return;
 
-    // 🔥 Aqui exclui só da lista local
-    setState(() {
-      _orders.removeWhere((o) => o.id == order.id);
-    });
+    try {
+      // exclui no backend
+      await _api.deleteOrder(order.id);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Pedido removido da lista.')),
-    );
+      // remove da lista local
+      setState(() {
+        _orders.removeWhere((o) => o.id == order.id);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pedido excluído com sucesso.')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao excluir pedido: $e')),
+      );
+    }
   }
 
   Widget _buildOrdersTab() {
@@ -1298,39 +1307,83 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                           const SizedBox(height: 4),
 
                           // Status de pagamento
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _statusColor(order.paymentStatus)
-                                  .withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: _statusColor(order.paymentStatus),
-                                    shape: BoxShape.circle,
+                          // Status de pagamento (clicável para alternar)
+                          InkWell(
+                            borderRadius: BorderRadius.circular(999),
+                            onTap: () async {
+                              final atual = order.paymentStatus.toUpperCase();
+
+                              // Se já está PAGO, volta para AGUARDANDO_PAGAMENTO
+                              // Se não está PAGO, marca como PAGO
+                              final novoStatus =
+                              (atual == 'PAGO') ? 'AGUARDANDO_PAGAMENTO' : 'PAGO';
+
+                              try {
+                                final updated = await _api.updatePaymentStatus(
+                                  orderId: order.id,
+                                  paymentStatus: novoStatus,
+                                );
+
+                                setState(() {
+                                  final idx =
+                                  _orders.indexWhere((o) => o.id == order.id);
+                                  if (idx != -1) {
+                                    _orders[idx] = updated;
+                                  }
+                                });
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      novoStatus == 'PAGO'
+                                          ? 'Pagamento marcado como PAGO.'
+                                          : 'Pagamento voltou para Aguardando pagamento.',
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _statusLabel(order.paymentStatus),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: _statusColor(order.paymentStatus),
-                                    fontWeight: FontWeight.w600,
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Erro ao atualizar pagamento: $e'),
                                   ),
-                                ),
-                              ],
+                                );
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _statusColor(order.paymentStatus)
+                                    .withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: _statusColor(order.paymentStatus),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _statusLabel(order.paymentStatus),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: _statusColor(order.paymentStatus),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
+
 
                           const SizedBox(height: 6),
 
@@ -1379,71 +1432,27 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                               const SizedBox(width: 4),
 
                               // Menu para alterar status de envio
-            /*
-                              PopupMenuButton<String>(
-                                tooltip: 'Alterar status de envio',
-                                onSelected: (value) {
-                                  _updateOrderShippingStatus(order, value);
-                                },
-                                itemBuilder: (context) {
-                                  final List<PopupMenuEntry<String>> items =
-                                  [];
-
-                                  // Se ainda está aguardando pagamento,
-                                  // não faz sentido mexer no envio:
-                                  if (!pagamentoPago) {
-                                    items.add(
-                                      const PopupMenuItem(
-                                        value: 'AGUARDANDO_PAGAMENTO',
-                                        child:
-                                        Text('Aguardando pagamento'),
-                                      ),
-                                    );
-                                  } else {
-                                    items.addAll([
-                                      const PopupMenuItem(
-                                        value: 'EM_SEPARACAO',
-                                        child: Text('Em separação'),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'ENVIADO',
-                                        child: Text('Enviado'),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'ENTREGUE',
-                                        child: Text('Entregue'),
-                                      ),
-                                    ]);
-                                  }
-
-                                  return items;
-                                },
-                                icon: const Icon(
-                                  Icons.more_vert,
-                                  size: 18,
-                                ),
-                              ),
-                              */
                               PopupMenuButton<String>(
                                 tooltip: 'Opções do pedido',
-                                onSelected: (value) {
+                                onSelected: (value) async {
                                   if (value == '_DELETE') {
-                                    _confirmAndDeleteOrder(order);
+                                    await _confirmAndDeleteOrder(order);
                                   } else {
-                                    _updateOrderShippingStatus(order, value);
+                                    await _updateOrderShippingStatus(order, value);
                                   }
                                 },
                                 itemBuilder: (context) {
                                   final List<PopupMenuEntry<String>> items = [];
 
-                                  if (!pagamentoPago) {
+                                  // Opções de status de envio
+                               //  if (!pagamentoPago) {
                                     items.add(
                                       const PopupMenuItem(
                                         value: 'AGUARDANDO_PAGAMENTO',
                                         child: Text('Aguardando pagamento'),
                                       ),
                                     );
-                                  } else {
+                                 // } else {
                                     items.addAll(const [
                                       PopupMenuItem(
                                         value: 'EM_SEPARACAO',
@@ -1458,10 +1467,10 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                                         child: Text('Entregue'),
                                       ),
                                     ]);
-                                  }
+                                //  }
 
-                                  // Só deixa excluir se não estiver pago (ex.: pedidos de teste)
-                                  if (!pagamentoPago) {
+                                  // 👉 Excluir só se estiver aguardando pagamento (pedido de teste / pendente)
+                                 // if (isPendente) {
                                     items.add(const PopupMenuDivider());
                                     items.add(
                                       const PopupMenuItem(
@@ -1472,7 +1481,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                                         ),
                                       ),
                                     );
-                                  }
+                               //   }
 
                                   return items;
                                 },
@@ -1483,8 +1492,10 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                               ),
 
 
+
                             ],
                           ),
+
 
                           // Botão "Marcar como pago"
                           if (!pagamentoPago)

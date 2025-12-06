@@ -31,6 +31,7 @@ class FratheliApiService {
     return decoded.map<Order>((e) => Order.fromJson(e)).toList();
   }
 
+  ///Atualiza status do pagamento
   Future<Order> updatePaymentStatus({
     required String orderId,
     required String paymentStatus,
@@ -68,7 +69,7 @@ class FratheliApiService {
     return Order.fromJson(data['order']);
   }
 
-
+  ///Atualiza status do envio
   Future<Order> updateShippingStatus({
     required String orderId,
     required String shippingStatus,
@@ -103,6 +104,7 @@ class FratheliApiService {
     return Order.fromJson(data['order']);
   }
 
+  ///Delete ordens/pedidos(nao apaga clientes)
   Future<void> deleteOrder(String orderId) async {
     final uri = Uri.parse('https://frathelicafe.com.br/api/delete_order.php');
 
@@ -110,13 +112,18 @@ class FratheliApiService {
       'orderId': orderId,
     });
 
-    if (resp.statusCode != 200 && resp.statusCode != 204) {
-      throw Exception('Falha ao excluir pedido (HTTP ${resp.statusCode}).');
+    if (resp.statusCode != 200) {
+      throw Exception(
+        'Falha ao excluir pedido (HTTP ${resp.statusCode}): ${resp.body}',
+      );
+    }
+
+    final data = jsonDecode(resp.body);
+
+    if (data is! Map || data['success'] != true) {
+      throw Exception('Erro ao excluir pedido: ${resp.body}');
     }
   }
-
-
-
 
   /// Lista de clientes
   Future<List<Client>> fetchClients() async {

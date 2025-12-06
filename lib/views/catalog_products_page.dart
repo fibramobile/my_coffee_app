@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/catalog_product.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+
 
 class CatalogProductsPage extends StatefulWidget {
   const CatalogProductsPage({Key? key}) : super(key: key);
@@ -114,6 +117,52 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
     }
   }
 
+  String? _uploadedImagePath; // ex: "images/bugia_250.jpg"
+
+  Future<void> _pickAndUploadImage(TextEditingController imgController) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+
+    if (picked == null) return;
+
+    final file = File(picked.path);
+
+    final uri = Uri.parse(
+      'https://smapps.16mb.com/fratheli/app/products/upload_product_image.php',
+    );
+
+    final request = http.MultipartRequest('POST', uri);
+    request.files.add(
+      await http.MultipartFile.fromPath('file', file.path),
+    );
+
+    final response = await request.send();
+
+    if (response.statusCode == 200) {
+      final body = await response.stream.bytesToString();
+      final data = jsonDecode(body);
+      if (data['success'] == true) {
+        setState(() {
+          _uploadedImagePath = data['path'];     // ex: images/xxx.jpg
+          imgController.text = _uploadedImagePath!; // ⬅️ ESSENCIAL
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Imagem enviada com sucesso.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: ${data['error']}')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('HTTP ${response.statusCode} no upload.')),
+      );
+    }
+  }
+
+
+
   // ---------------- CRUD ----------------
 
   Future<void> _addOrEditProduct({CatalogProduct? editing}) async {
@@ -134,6 +183,8 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
     final metaController = TextEditingController(text: editing?.meta ?? '');
     bool tagAlt = editing?.tagAlt ?? false;
     bool inStock = editing?.inStock ?? true;
+    // Preview da imagem (nova ou existente)
+    final previewPath = _uploadedImagePath ?? imgController.text.trim();
 
     await showDialog(
       context: context,
@@ -174,13 +225,38 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                   decoration:
                   const InputDecoration(labelText: 'Descrição (site)'),
                 ),
-                TextField(
-                  controller: imgController,
-                  decoration: const InputDecoration(
-                    labelText: 'Caminho da imagem',
-                    hintText: 'assets/img/...',
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Imagem do produto',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Botão para escolher e enviar imagem
+                    ElevatedButton.icon(
+                      onPressed: () => _pickAndUploadImage(imgController),
+                      icon: const Icon(Icons.image),
+                      label: const Text('Selecionar imagem'),
+                    ),
+
+                    const SizedBox(height: 8),
+
+
+                    if (previewPath.isNotEmpty)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          'https://smapps.16mb.com/fratheli/app/products/$previewPath',
+                          height: 140,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+
+                  ],
                 ),
+
                 TextField(
                   controller: tagController,
                   decoration: const InputDecoration(
