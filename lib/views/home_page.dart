@@ -183,7 +183,23 @@ class HomePage extends StatelessWidget {
                     );
                   },
                 ),
-
+                // INSUMOS
+                _ModuleCard(
+                  icon: Icons.shopping_bag,
+                  title: 'Insumos',
+                  subtitle: 'Registro de insumos',
+                  highlight: false, // aparece como módulo ativo
+                  onTap: () {
+                    /*
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const CatalogProductsPage(),
+                      ),
+                    );
+                  */
+                  },
+                ),
               ],
             ),
           ],

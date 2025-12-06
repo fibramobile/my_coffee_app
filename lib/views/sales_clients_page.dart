@@ -25,6 +25,17 @@ class _SalesClientsPageState extends State<SalesClientsPage>
   List<Order> _orders = [];
   List<Client> _clients = [];
 
+  // 'ALL' = sem filtro, mostra todos
+  String _shippingFilter = 'ALL';
+
+  List<Order> get _filteredOrders {
+    if (_shippingFilter == 'ALL') return _orders;
+    return _orders.where((o) {
+      return o.shippingStatus.toUpperCase() == _shippingFilter;
+    }).toList();
+  }
+
+
   Color _shippingStatusColor(String status) {
     switch (status.toUpperCase()) {
       case 'AGUARDANDO_PAGAMENTO':
@@ -63,6 +74,51 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     _loadAll();
   }
 
+  Widget _buildShippingFilterChips() {
+    final options = <String, String>{
+      'ALL': 'Todos',
+      'AGUARDANDO_PAGAMENTO': 'Aguardando pagto',
+      'EM_SEPARACAO': 'Em separação',
+      'ENVIADO': 'Enviado',
+      'ENTREGUE': 'Entregue',
+    };
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: options.entries.map((e) {
+          final isSelected = _shippingFilter == e.key;
+          final color = e.key == 'ALL'
+              ? Colors.grey.shade700
+              : _shippingStatusColor(e.key);
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(
+                e.value,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : color,
+                  fontSize: 12,
+                ),
+              ),
+              selected: isSelected,
+              selectedColor: color,
+              backgroundColor: color.withOpacity(0.08),
+              side: BorderSide(color: color.withOpacity(0.5)),
+              onSelected: (_) {
+                setState(() {
+                  _shippingFilter = e.key;
+                });
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Future<void> _updateOrderShippingStatus(
       Order order, String newStatus) async {
     try {
@@ -98,38 +154,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       _loadOrders(),
     ]);
   }
-/*
-  Future<void> _loadOrders() async {
-    setState(() {
-      _loadingOrders = true;
-      _errorOrders = null;
-      _attachClientsToOrders();
-    });
 
-    try {
-      final orders = await _api.fetchOrders();
-
-      // "join" em memória com clientes, se já tiver carregado
-      final mapClients = {for (final c in _clients) c.id: c};
-
-      for (final o in orders) {
-        o.client = mapClients[o.clientId];
-      }
-
-      setState(() {
-        _orders = orders;
-      });
-    } catch (e) {
-      setState(() {
-        _errorOrders = e.toString();
-      });
-    } finally {
-      setState(() {
-        _loadingOrders = false;
-      });
-    }
-  }
-  */
   Future<void> _loadOrders() async {
     setState(() {
       _loadingOrders = true;
@@ -140,7 +165,8 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       final orders = await _api.fetchOrders();
 
       setState(() {
-        _orders = orders;
+        _orders = orders
+        ..sort((a, b) => b.createdAt!.compareTo(a.createdAt!)); // 👈 mais recente no topo
         _attachClientsToOrders(); // 👈 AGORA SIM, DEPOIS DE ATUALIZAR _orders
       });
     } catch (e) {
@@ -154,30 +180,6 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     }
   }
 
-  /*
-  Future<void> _loadClients() async {
-    setState(() {
-      _loadingClients = true;
-      _errorClients = null;
-      _attachClientsToOrders();
-    });
-
-    try {
-      final clients = await _api.fetchClients();
-      setState(() {
-        _clients = clients;
-      });
-    } catch (e) {
-      setState(() {
-        _errorClients = e.toString();
-      });
-    } finally {
-      setState(() {
-        _loadingClients = false;
-      });
-    }
-  }
-  */
   Future<void> _loadClients() async {
     setState(() {
       _loadingClients = true;
@@ -1186,7 +1188,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       );
     }
   }
-
+/*
   Widget _buildOrdersTab() {
     if (_loadingOrders && _orders.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -1570,6 +1572,434 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       ),
     );
   }
+  */
+  Widget _buildOrdersTab() {
+    if (_loadingOrders && _orders.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorOrders != null && _orders.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Erro ao carregar pedidos:\n$_errorOrders',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    if (_orders.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadOrders,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 80),
+            Center(child: Text('Nenhum pedido encontrado ainda.')),
+          ],
+        ),
+      );
+    }
+
+    // 👉 usa a lista filtrada
+    final orders = _filteredOrders;
+
+    return SafeArea(
+      bottom: true,
+      child: Column(
+        children: [
+          // barra de filtros por status de envio
+          _buildShippingFilterChips(),
+
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _loadOrders,
+              child: orders.isEmpty
+                  ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 80),
+                  Center(child: Text('Nenhum pedido com esse status.')),
+                ],
+              )
+                  : ListView.separated(
+                padding: const EdgeInsets.fromLTRB(
+                  0,
+                  8,
+                  0,
+                  24, // 👈 espaço extra no rodapé da lista
+                ),
+                itemCount: orders.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 4),
+                itemBuilder: (context, index) {
+                  final order = orders[index];
+                  final clientName = order.client?.name ?? order.clientId;
+                  final itemsDesc =
+                      '${order.totalItems} ${order.totalItems == 1 ? 'item' : 'itens'}';
+
+                  final pagamentoPago =
+                      order.paymentStatus.toUpperCase() == 'PAGO';
+                  final isPendente = order.paymentStatus.toUpperCase() ==
+                      'AGUARDANDO_PAGAMENTO';
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 1,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                OrderDetailsPage(order: order),
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // LADO ESQUERDO
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Pedido ${order.id}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    clientName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$itemsDesc · ${_formatDate(order.createdAt)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(width: 12),
+
+                            // LADO DIREITO
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: 220,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Total
+                                  Text(
+                                    _formatCurrency(order.total),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+
+                                  // STATUS PAGAMENTO (clicável)
+                                  InkWell(
+                                    borderRadius:
+                                    BorderRadius.circular(999),
+                                    onTap: () async {
+                                      final atual = order.paymentStatus
+                                          .toUpperCase();
+
+                                      final novoStatus = (atual == 'PAGO')
+                                          ? 'AGUARDANDO_PAGAMENTO'
+                                          : 'PAGO';
+
+                                      try {
+                                        final updated =
+                                        await _api.updatePaymentStatus(
+                                          orderId: order.id,
+                                          paymentStatus: novoStatus,
+                                        );
+
+                                        setState(() {
+                                          final idx = _orders.indexWhere(
+                                                  (o) => o.id == order.id);
+                                          if (idx != -1) {
+                                            _orders[idx] = updated;
+                                          }
+                                        });
+
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              novoStatus == 'PAGO'
+                                                  ? 'Pagamento marcado como PAGO.'
+                                                  : 'Pagamento voltou para Aguardando pagamento.',
+                                            ),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                'Erro ao atualizar pagamento: $e'),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                        _statusColor(order.paymentStatus)
+                                            .withOpacity(0.12),
+                                        borderRadius:
+                                        BorderRadius.circular(999),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 6,
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: _statusColor(
+                                                  order.paymentStatus),
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            _statusLabel(
+                                                order.paymentStatus),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: _statusColor(
+                                                  order.paymentStatus),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 6),
+
+                                  // STATUS ENVIO + MENU
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _shippingStatusColor(
+                                              order.shippingStatus)
+                                              .withOpacity(0.12),
+                                          borderRadius:
+                                          BorderRadius.circular(999),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 6,
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: _shippingStatusColor(
+                                                    order.shippingStatus),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              _shippingStatusLabel(
+                                                  order.shippingStatus),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color:
+                                                _shippingStatusColor(
+                                                    order
+                                                        .shippingStatus),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      PopupMenuButton<String>(
+                                        tooltip: 'Opções do pedido',
+                                        onSelected: (value) async {
+                                          if (value == '_DELETE') {
+                                            await _confirmAndDeleteOrder(
+                                                order);
+                                          } else {
+                                            await _updateOrderShippingStatus(
+                                                order, value);
+                                          }
+                                        },
+                                        itemBuilder: (context) {
+                                          final List<
+                                              PopupMenuEntry<String>> items =
+                                          [];
+
+                                          items.add(
+                                            const PopupMenuItem(
+                                              value:
+                                              'AGUARDANDO_PAGAMENTO',
+                                              child: Text(
+                                                  'Aguardando pagamento'),
+                                            ),
+                                          );
+                                          items.addAll(const [
+                                            PopupMenuItem(
+                                              value: 'EM_SEPARACAO',
+                                              child: Text('Em separação'),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'ENVIADO',
+                                              child: Text('Enviado'),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'ENTREGUE',
+                                              child: Text('Entregue'),
+                                            ),
+                                          ]);
+
+                                          if (isPendente) {
+                                            items.add(
+                                                const PopupMenuDivider());
+                                            items.add(
+                                              const PopupMenuItem(
+                                                value: '_DELETE',
+                                                child: Text(
+                                                  'Excluir pedido',
+                                                  style: TextStyle(
+                                                      color: Colors.red),
+                                                ),
+                                              ),
+                                            );
+                                          }
+
+                                          return items;
+                                        },
+                                        icon: const Icon(
+                                          Icons.more_vert,
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  // Botão "Marcar como pago"
+                        /*
+                                  if (!pagamentoPago)
+                                    Padding(
+                                      padding:
+                                      const EdgeInsets.only(top: 4),
+                                      child: TextButton(
+                                        style: TextButton.styleFrom(
+                                          foregroundColor:
+                                          const Color(0xFF2D2213),
+                                          padding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          minimumSize: const Size(0, 0),
+                                          tapTargetSize:
+                                          MaterialTapTargetSize
+                                              .shrinkWrap,
+                                        ),
+                                        onPressed: () async {
+                                          try {
+                                            final updated = await _api
+                                                .updatePaymentStatus(
+                                              orderId: order.id,
+                                              paymentStatus: 'PAGO',
+                                            );
+
+                                            setState(() {
+                                              final idx = _orders
+                                                  .indexWhere((element) =>
+                                              element.id ==
+                                                  order.id);
+                                              if (idx != -1) {
+                                                _orders[idx] = updated;
+                                              }
+                                            });
+
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                    'Pagamento marcado como PAGO.'),
+                                              ),
+                                            );
+                                          } catch (e) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Erro ao atualizar pagamento: $e',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        child: const Text(
+                                          'Marcar como pago',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ),
+                  */
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
 
 
   // ---------------------------------------------------------------------------

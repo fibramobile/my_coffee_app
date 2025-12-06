@@ -366,7 +366,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Catálogo de Produtos (site)'),
+        title: const Text('Catálogo de Produtos (site)', style: TextStyle(fontSize: 14),),
         actions: [
           if (_isSaving)
             const Padding(
