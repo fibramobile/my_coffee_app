@@ -3,8 +3,9 @@ class CatalogProduct {
   String name;
   String description;
   String imagePath;
-  String pricingName;      // nome usado na precificação (ex: "Mel de Bugia")
-  double fallbackPrice;    // preço padrão, caso não ache na precificação
+  String pricingName;
+  double fallbackPrice;
+  double? originalPrice;        // 🔥 novo
   String tag;
   bool tagAlt;
   String meta;
@@ -17,6 +18,7 @@ class CatalogProduct {
     required this.imagePath,
     required this.pricingName,
     required this.fallbackPrice,
+    this.originalPrice,         // 🔥 novo
     required this.tag,
     required this.tagAlt,
     required this.meta,
@@ -31,6 +33,9 @@ class CatalogProduct {
       imagePath: json['imagePath'] ?? '',
       pricingName: json['pricingName'] ?? '',
       fallbackPrice: (json['fallbackPrice'] ?? 0).toDouble(),
+      originalPrice: json['originalPrice'] != null     // 🔥 novo
+          ? (json['originalPrice'] as num).toDouble()
+          : null,
       tag: json['tag'] ?? '',
       tagAlt: json['tagAlt'] ?? false,
       meta: json['meta'] ?? '',
@@ -46,6 +51,7 @@ class CatalogProduct {
       'imagePath': imagePath,
       'pricingName': pricingName,
       'fallbackPrice': fallbackPrice,
+      if (originalPrice != null) 'originalPrice': originalPrice, // 🔥 novo
       'tag': tag,
       'tagAlt': tagAlt,
       'meta': meta,

@@ -164,7 +164,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
 
 
   // ---------------- CRUD ----------------
-
+/*
   Future<void> _addOrEditProduct({CatalogProduct? editing}) async {
     final isEditing = editing != null;
 
@@ -176,6 +176,11 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
     TextEditingController(text: editing?.imagePath ?? '');
     final pricingNameController =
     TextEditingController(text: editing?.pricingName ?? '');
+    final originalPriceController = TextEditingController(
+      text: editing?.originalPrice != null
+          ? editing!.originalPrice!.toStringAsFixed(2)
+          : '',
+    );
     final fallbackPriceController = TextEditingController(
       text: editing != null ? editing.fallbackPrice.toStringAsFixed(2) : '0.00',
     );
@@ -219,6 +224,16 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                     prefixText: 'R\$ ',
                   ),
                 ),
+                TextField(
+                  controller: originalPriceController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Preço cheio (antes do desconto)',
+                    prefixText: 'R\$ ',
+                    hintText: 'Ex: 52,90',
+                  ),
+                ),
+
                 TextField(
                   controller: descController,
                   maxLines: 3,
@@ -306,11 +321,14 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                 }
 
                 final fallbackPrice = double.tryParse(
-                  fallbackPriceController.text
-                      .replaceAll(',', '.')
-                      .trim(),
+                  fallbackPriceController.text.replaceAll(',', '.').trim(),
                 ) ??
                     0.0;
+
+                final originalPrice = double.tryParse(
+                  originalPriceController.text.replaceAll(',', '.').trim(),
+                );
+
 
                 setState(() {
                   if (isEditing) {
@@ -320,6 +338,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                     editing.imagePath = imgController.text.trim();
                     editing.pricingName = pricingName;
                     editing.fallbackPrice = fallbackPrice;
+                    editing.originalPrice = originalPrice; // 🔥 novo
                     editing.tag = tagController.text.trim();
                     editing.meta = metaController.text.trim();
                     editing.tagAlt = tagAlt;
@@ -333,6 +352,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                         imagePath: imgController.text.trim(),
                         pricingName: pricingName,
                         fallbackPrice: fallbackPrice,
+                        originalPrice: originalPrice, // 🔥 novo
                         tag: tagController.text.trim(),
                         tagAlt: tagAlt,
                         meta: metaController.text.trim(),
@@ -341,6 +361,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                     );
                   }
                 });
+
 
                 Navigator.pop(context);
               },
@@ -352,6 +373,286 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
 
     await _saveToServer();
   }
+  */
+  Future<void> _addOrEditProduct({CatalogProduct? editing}) async {
+    final isEditing = editing != null;
+
+    final skuController = TextEditingController(text: editing?.sku ?? '');
+    final nameController = TextEditingController(text: editing?.name ?? '');
+    final pricingNameController =
+    TextEditingController(text: editing?.pricingName ?? '');
+    final descController =
+    TextEditingController(text: editing?.description ?? '');
+    final imgController =
+    TextEditingController(text: editing?.imagePath ?? '');
+    final fallbackPriceController = TextEditingController(
+      text: editing != null
+          ? editing.fallbackPrice.toStringAsFixed(2)
+          : '',
+    );
+    final originalPriceController = TextEditingController(
+      text: (editing?.originalPrice != null)
+          ? editing!.originalPrice!.toStringAsFixed(2)
+          : '',
+    );
+    final tagController = TextEditingController(text: editing?.tag ?? '');
+    final metaController = TextEditingController(text: editing?.meta ?? '');
+
+    bool tagAlt = editing?.tagAlt ?? false;
+    bool inStock = editing?.inStock ?? true;
+
+    String getPreviewPath() =>
+        _uploadedImagePath ?? imgController.text.trim();
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: const Color(0xFFF6EEE0),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          titlePadding:
+          const EdgeInsets.only(top: 16, left: 20, right: 20, bottom: 8),
+          contentPadding:
+          const EdgeInsets.only(left: 20, right: 20, top: 8, bottom: 16),
+          title: Text(
+            isEditing ? 'Editar produto' : 'Novo produto',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          content: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 450),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // SKU
+                  TextField(
+                    controller: skuController,
+                    decoration: const InputDecoration(
+                      labelText: 'SKU',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Nome + Nome na precificação
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome (ex: 250g)',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  TextField(
+                    controller: pricingNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome na precificação',
+                      hintText: 'Ex: Mel de Bugia',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // PREÇOS LADO A LADO
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: fallbackPriceController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                            labelText: 'Preço base (fallback)',
+                            prefixText: 'R\$ ',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: originalPriceController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: const InputDecoration(
+                            labelText: 'Preço cheio',
+                            prefixText: 'R\$ ',
+                            hintText: 'Ex: 55,00',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // DESCRIÇÃO
+                  TextField(
+                    controller: descController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Descrição (site)',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // IMAGEM
+                  Text(
+                    'Imagem do produto',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFD4AF37),
+                      foregroundColor: Colors.black87,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                    onPressed: () async {
+                      await _pickAndUploadImage(imgController);
+                      // força rebuild do preview
+                      (dialogCtx as Element).markNeedsBuild();
+                    },
+                    icon: const Icon(Icons.image),
+                    label: const Text('Selecionar imagem'),
+                  ),
+                  const SizedBox(height: 10),
+                  if (getPreviewPath().isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: AspectRatio(
+                        aspectRatio: 3 / 4,
+                        child: Image.network(
+                          'https://smapps.16mb.com/fratheli/app/products/${getPreviewPath()}',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 20),
+
+                  // TAG + META
+                  TextField(
+                    controller: tagController,
+                    decoration: const InputDecoration(
+                      labelText: 'Tag (ex: ORIGEM, PREMIUM)',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: metaController,
+                    decoration: const InputDecoration(
+                      labelText: 'Meta / subtítulo',
+                      hintText: 'Ex: Acidez equilibrada, corpo suave...',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // SWITCHES
+                  SwitchListTile(
+                    title: const Text('Tag alternativa (tagAlt)'),
+                    value: tagAlt,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (v) {
+                      tagAlt = v;
+                      (dialogCtx as Element).markNeedsBuild();
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Em estoque (inStock)'),
+                    value: inStock,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (v) {
+                      inStock = v;
+                      (dialogCtx as Element).markNeedsBuild();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actionsPadding:
+          const EdgeInsets.only(left: 16, right: 16, bottom: 12, top: 0),
+          actions: [
+            TextButton(
+              child: const Text('Cancelar'),
+              onPressed: () => Navigator.pop(dialogCtx),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD4AF37),
+                foregroundColor: Colors.black87,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              child: Text(isEditing ? 'Salvar alterações' : 'Adicionar'),
+              onPressed: () {
+                final sku = skuController.text.trim();
+                final name = nameController.text.trim();
+                final pricingName = pricingNameController.text.trim();
+
+                if (sku.isEmpty || name.isEmpty || pricingName.isEmpty) {
+                  return;
+                }
+
+                final fallbackPrice = double.tryParse(
+                  fallbackPriceController.text
+                      .replaceAll(',', '.')
+                      .trim(),
+                ) ??
+                    0.0;
+
+                final originalPrice = double.tryParse(
+                  originalPriceController.text
+                      .replaceAll(',', '.')
+                      .trim(),
+                );
+
+                setState(() {
+                  if (isEditing) {
+                    editing!.sku = sku;
+                    editing.name = name;
+                    editing.description = descController.text.trim();
+                    editing.imagePath = imgController.text.trim();
+                    editing.pricingName = pricingName;
+                    editing.fallbackPrice = fallbackPrice;
+                    editing.originalPrice = originalPrice;
+                    editing.tag = tagController.text.trim();
+                    editing.meta = metaController.text.trim();
+                    editing.tagAlt = tagAlt;
+                    editing.inStock = inStock;
+                  } else {
+                    _products.add(
+                      CatalogProduct(
+                        sku: sku,
+                        name: name,
+                        description: descController.text.trim(),
+                        imagePath: imgController.text.trim(),
+                        pricingName: pricingName,
+                        fallbackPrice: fallbackPrice,
+                        originalPrice: originalPrice,
+                        tag: tagController.text.trim(),
+                        tagAlt: tagAlt,
+                        meta: metaController.text.trim(),
+                        inStock: inStock,
+                      ),
+                    );
+                  }
+                });
+
+                Navigator.pop(dialogCtx);
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    await _saveToServer();
+  }
+
 
   Future<void> _deleteProduct(CatalogProduct p) async {
     setState(() => _products.remove(p));
