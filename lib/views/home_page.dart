@@ -5,6 +5,8 @@ import 'package:my_coffee_app/views/stock_page.dart';
 import '../controllers/pricing_controller.dart';
 import 'catalog_products_page.dart';
 import 'pricing_list_page.dart';
+import 'package:provider/provider.dart';
+
 
 class HomePage extends StatelessWidget {
   final PricingController controller;
@@ -137,6 +139,7 @@ class HomePage extends StatelessWidget {
                 ),
 
                 // VENDAS & CLIENTES
+                // em home_page.dart, no módulo Vendas & Clientes
                 _ModuleCard(
                   icon: Icons.point_of_sale,
                   title: 'Vendas & Clientes',
@@ -146,11 +149,14 @@ class HomePage extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const SalesClientsPage(),
+                        builder: (_) => SalesClientsPage(
+                          pricingController: controller, // ou _controller, dependendo da sua HomePage
+                        ),
                       ),
                     );
                   },
                 ),
+
 
 
                 // 🔥 PRECIFICAÇÃO (FUNCIONAL)

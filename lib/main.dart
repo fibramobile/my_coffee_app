@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
+
 import 'controllers/pricing_controller.dart';
-import 'views/pricing_list_page.dart';
 import 'views/home_page.dart';
 
 void main() {
   runApp(const CafePrecoApp());
 }
 
-class CafePrecoApp extends StatelessWidget {
+class CafePrecoApp extends StatefulWidget {
   const CafePrecoApp({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    final controller = PricingController();
+  State<CafePrecoApp> createState() => _CafePrecoAppState();
+}
 
+class _CafePrecoAppState extends State<CafePrecoApp> {
+  // Uma única instância do controller para o app inteiro
+  final PricingController _pricingController = PricingController();
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Gestão de Café – App',
@@ -105,8 +111,8 @@ class CafePrecoApp extends StatelessWidget {
         ),
       ),
 
-      // 👉 Tela principal agora é o dashboard
-      home: HomePage(controller: controller),
+      // 👉 Tela principal agora é o dashboard, recebendo o mesmo controller
+      home: HomePage(controller: _pricingController),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../controllers/pricing_controller.dart';
 import '../models/order.dart';
 import '../models/client.dart';
 import '../services/fratheli_api_service.dart';
@@ -7,7 +8,12 @@ import 'order_details_page.dart';
 import 'client_details_page.dart';
 
 class SalesClientsPage extends StatefulWidget {
-  const SalesClientsPage({Key? key}) : super(key: key);
+  final PricingController pricingController;
+
+  const SalesClientsPage({
+    Key? key,
+    required this.pricingController,
+  }) : super(key: key);
 
   @override
   State<SalesClientsPage> createState() => _SalesClientsPageState();
@@ -15,7 +21,11 @@ class SalesClientsPage extends StatefulWidget {
 
 class _SalesClientsPageState extends State<SalesClientsPage>
     with SingleTickerProviderStateMixin {
+  // 👉 agora o widget existe aqui dentro
+  PricingController get _pricingController => widget.pricingController;
+
   late final FratheliApiService _api;
+
 
   bool _loadingOrders = false;
   bool _loadingClients = false;
@@ -73,6 +83,26 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     _api = FratheliApiService();
     _loadAll();
   }
+
+  double _calcularLucroLiquidoMes(List<Order> paidThisMonth) {
+    double lucroLiquidoMes = 0.0;
+
+    for (final o in paidThisMonth) {
+      for (final item in o.items) {
+        final receitaItem = item.unitPrice * item.qty;
+
+        // pega margem líquida da tela de precificação
+        final margemLiquida =
+            _pricingController.getNetMarginForSku(item.sku) ?? 0.0;
+
+        lucroLiquidoMes += receitaItem * margemLiquida;
+      }
+    }
+
+    return lucroLiquidoMes;
+  }
+
+
 
   Widget _buildShippingFilterChips() {
     final options = <String, String>{
@@ -269,6 +299,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
 
   @override
   Widget build(BuildContext context) {
+
     return DefaultTabController(
       length: 3, // Dashboard + Pedidos + Clientes
       child: Scaffold(
@@ -623,6 +654,9 @@ class _SalesClientsPageState extends State<SalesClientsPage>
           (sum, o) => sum + o.total,
     );
 
+    // 👉 Lucro líquido do mês (usando a margem da precificação)
+    final lucroLiquidoMes = _calcularLucroLiquidoMes(paidThisMonth);
+
     // NOVO: separar quanto é produto e quanto é frete (somente pedidos pagos no mês)
     double totalProdutosMes = 0.0;
     double totalFreteMes = 0.0;
@@ -635,7 +669,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       );
       totalProdutosMes += totalItens;
 
-      // ⚠️ Trocar 'shippingCost' pelo campo real de frete da sua Order
+      // campo real de frete
       final frete = o.shipping;
       totalFreteMes += frete;
     }
@@ -688,13 +722,10 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     final topProdutos = produtosList.take(10).toList();
 
     // Mapa de envios por UF (apenas pedidos PAGOS)
-    // Mapa de envios por UF (apenas pedidos PAGOS)
     final Map<String, int> enviosPorUf = {};
-
     for (final o in _orders) {
       if (o.paymentStatus.toUpperCase() != 'PAGO') continue;
 
-      // Usa diretamente o campo state do Address
       final uf = (o.client?.address.state ?? '').trim().toUpperCase();
       if (uf.isEmpty) continue;
 
@@ -703,7 +734,6 @@ class _SalesClientsPageState extends State<SalesClientsPage>
 
     final enviosList = enviosPorUf.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-
 
     return RefreshIndicator(
       onRefresh: _loadAll,
@@ -736,9 +766,10 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                   const SizedBox(height: 12),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      // em telas estreitas, empilha
                       final isNarrow = constraints.maxWidth < 600;
+
                       if (isNarrow) {
+                        // MOBILE: empilha tudo, inclusive o lucro
                         return Column(
                           children: [
                             _DashboardNumber(
@@ -755,25 +786,35 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                               label: 'Ticket médio (mês)',
                               value: _formatCurrency(ticketMedio),
                             ),
+                            const SizedBox(height: 12),
+                            _DashboardNumber(
+                              label: 'Lucro líquido (mês)',
+                              value: _formatCurrency(lucroLiquidoMes),
+                            ),
                           ],
                         );
                       }
 
-                      return Row(
+                      // DESKTOP: lado a lado
+                      return Wrap(
+                        spacing: 16,
+                        runSpacing: 12,
                         children: [
                           _DashboardNumber(
                             label: 'Total vendido (PAGO)',
                             value: _formatCurrency(totalSoldThisMonth),
                           ),
-                          const SizedBox(width: 16),
                           _DashboardNumber(
                             label: 'Total pendente',
                             value: _formatCurrency(totalPending),
                           ),
-                          const SizedBox(width: 16),
                           _DashboardNumber(
                             label: 'Ticket médio (mês)',
                             value: _formatCurrency(ticketMedio),
+                          ),
+                          _DashboardNumber(
+                            label: 'Lucro líquido (mês)',
+                            value: _formatCurrency(lucroLiquidoMes),
                           ),
                         ],
                       );
@@ -782,7 +823,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
 
                   const SizedBox(height: 16),
 
-                  // NOVO: Quebra Produtos x Frete
+                  // Quebra Produtos x Frete
                   Row(
                     children: [
                       _DashboardNumber(
@@ -913,7 +954,8 @@ class _SalesClientsPageState extends State<SalesClientsPage>
               ),
             ),
           ),
-          SizedBox(height:120)
+
+          const SizedBox(height: 120),
         ],
       ),
     );
@@ -1188,6 +1230,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       );
     }
   }
+
 /*
   Widget _buildOrdersTab() {
     if (_loadingOrders && _orders.isEmpty) {
@@ -1998,9 +2041,6 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       ),
     );
   }
-
-
-
 
   // ---------------------------------------------------------------------------
   // CLIENTES

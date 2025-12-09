@@ -379,12 +379,9 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
 
     final skuController = TextEditingController(text: editing?.sku ?? '');
     final nameController = TextEditingController(text: editing?.name ?? '');
-    final pricingNameController =
-    TextEditingController(text: editing?.pricingName ?? '');
-    final descController =
-    TextEditingController(text: editing?.description ?? '');
-    final imgController =
-    TextEditingController(text: editing?.imagePath ?? '');
+    final pricingNameController = TextEditingController(text: editing?.pricingName ?? '');
+    final descController = TextEditingController(text: editing?.description ?? '');
+    final imgController = TextEditingController(text: editing?.imagePath ?? '');
     final fallbackPriceController = TextEditingController(
       text: editing != null
           ? editing.fallbackPrice.toStringAsFixed(2)
@@ -401,8 +398,20 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
     bool tagAlt = editing?.tagAlt ?? false;
     bool inStock = editing?.inStock ?? true;
 
-    String getPreviewPath() =>
-        _uploadedImagePath ?? imgController.text.trim();
+    // 🔥 OPÇÕES DE MOAGEM (Grão / Moído)
+    final existingGrinds = editing?.grindOptions ?? const <String>[];
+
+    bool grindGrao =
+    existingGrinds.isEmpty ? true : existingGrinds.contains('Grão');
+    bool grindMoido =
+    existingGrinds.isEmpty ? true : existingGrinds.contains('Moído');
+
+    String defaultGrindLocal = editing?.defaultGrind ??
+        (grindGrao
+            ? 'Grão'
+            : (grindMoido ? 'Moído' : 'Grão')); // fallback quando nada marcado
+
+    String getPreviewPath() => _uploadedImagePath ?? imgController.text.trim();
 
     await showDialog(
       context: context,
@@ -494,7 +503,102 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // IMAGEM
+                // DESCRIÇÃO
+                TextField(
+                  controller: descController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Descrição (site)',
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 🔥 OPÇÕES DE MOAGEM
+                Text(
+                  'Opções de moagem',
+                  style: Theme.of(dialogCtx).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                CheckboxListTile(
+                  title: const Text('Grão (inteiro)'),
+                  value: grindGrao,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  onChanged: (v) {
+                    grindGrao = v ?? false;
+
+                    // se desmarcar Grão e ele era o default, ajusta
+                    if (!grindGrao && defaultGrindLocal == 'Grão') {
+                      if (grindMoido) {
+                        defaultGrindLocal = 'Moído';
+                      }
+                    }
+
+                    (dialogCtx as Element).markNeedsBuild();
+                  },
+                ),
+                CheckboxListTile(
+                  title: const Text('Moído'),
+                  value: grindMoido,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  onChanged: (v) {
+                    grindMoido = v ?? false;
+
+                    // se desmarcar Moído e ele era o default, ajusta
+                    if (!grindMoido && defaultGrindLocal == 'Moído') {
+                      if (grindGrao) {
+                        defaultGrindLocal = 'Grão';
+                      }
+                    }
+
+                    (dialogCtx as Element).markNeedsBuild();
+                  },
+                ),
+
+                if (grindGrao || grindMoido) ...[
+              const SizedBox(height: 4),
+            Text(
+              'Moagem padrão no site/app',
+              style: Theme.of(dialogCtx)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            RadioListTile<String>(
+              title: const Text('Grão'),
+              value: 'Grão',
+              groupValue: defaultGrindLocal,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              onChanged: grindGrao
+                  ? (v) {
+                defaultGrindLocal = v!;
+                (dialogCtx as Element).markNeedsBuild();
+              }
+                  : null,
+            ),
+            RadioListTile<String>(
+              title: const Text('Moído'),
+              value: 'Moído',
+              groupValue: defaultGrindLocal,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              onChanged: grindMoido
+                  ? (v) {
+                defaultGrindLocal = v!;
+                (dialogCtx as Element).markNeedsBuild();
+              }
+                  : null,
+            ),
+            ],
+
+            const SizedBox(height: 16),
+
+        // IMAGEM
                   Text(
                     'Imagem do produto',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -579,6 +683,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
               child: const Text('Cancelar'),
               onPressed: () => Navigator.pop(dialogCtx),
             ),
+            /*
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFD4AF37),
@@ -645,6 +750,87 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                 Navigator.pop(dialogCtx);
               },
             ),
+
+             */
+            ElevatedButton(
+              child: Text(isEditing ? 'Salvar alterações' : 'Adicionar'),
+              onPressed: () {
+                final sku = skuController.text.trim();
+                final name = nameController.text.trim();
+                final pricingName = pricingNameController.text.trim();
+
+                if (sku.isEmpty || name.isEmpty || pricingName.isEmpty) {
+                  return;
+                }
+
+                final fallbackPrice = double.tryParse(
+                  fallbackPriceController.text
+                      .replaceAll(',', '.')
+                      .trim(),
+                ) ??
+                    0.0;
+
+                final originalPrice = double.tryParse(
+                  originalPriceController.text
+                      .replaceAll(',', '.')
+                      .trim(),
+                );
+
+                // 🔥 monta a lista de moagem
+                final List<String> grindOptions = [];
+                if (grindGrao) grindOptions.add('Grão');
+                if (grindMoido) grindOptions.add('Moído');
+
+                String? defaultGrind = defaultGrindLocal;
+                if (!grindOptions.contains(defaultGrind)) {
+                  defaultGrind =
+                  grindOptions.isNotEmpty ? grindOptions.first : null;
+                }
+
+                setState(() {
+                  if (isEditing) {
+                    editing!.sku = sku;
+                    editing.name = name;
+                    editing.description = descController.text.trim();
+                    editing.imagePath = imgController.text.trim();
+                    editing.pricingName = pricingName;
+                    editing.fallbackPrice = fallbackPrice;
+                    editing.originalPrice = originalPrice;
+                    editing.tag = tagController.text.trim();
+                    editing.meta = metaController.text.trim();
+                    editing.tagAlt = tagAlt;
+                    editing.inStock = inStock;
+
+                    // 🔥 novos campos
+                    editing.grindOptions = grindOptions;
+                    editing.defaultGrind = defaultGrind;
+                  } else {
+                    _products.add(
+                      CatalogProduct(
+                        sku: sku,
+                        name: name,
+                        description: descController.text.trim(),
+                        imagePath: imgController.text.trim(),
+                        pricingName: pricingName,
+                        fallbackPrice: fallbackPrice,
+                        originalPrice: originalPrice,
+                        tag: tagController.text.trim(),
+                        tagAlt: tagAlt,
+                        meta: metaController.text.trim(),
+                        inStock: inStock,
+
+                        // 🔥 novos campos
+                        grindOptions: grindOptions,
+                        defaultGrind: defaultGrind,
+                      ),
+                    );
+                  }
+                });
+
+                Navigator.pop(dialogCtx);
+              },
+            ),
+
           ],
         );
       },
