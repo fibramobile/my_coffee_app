@@ -104,6 +104,19 @@ class OrderDetailsPage extends StatelessWidget {
                           .bodySmall
                           ?.copyWith(color: Colors.grey[700]),
                     ),
+                    if (order.freightService != null && order.freightService!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Entrega: ${order.freightService}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      if (order.freightDeadline != null &&
+                          order.freightDeadline!.isNotEmpty)
+                        Text(
+                          'Prazo: ${order.freightDeadline}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                    ],
                   ],
                 ],
               ),

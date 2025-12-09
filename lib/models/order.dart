@@ -31,16 +31,28 @@ class Order {
   final String id;
   final String clientId;
   final List<OrderItem> items;
+
   final double subtotal;
   final double shipping;
   final double total;
+
+  // Pagamento
   final String paymentProvider;
   final String? paymentId;
   final String paymentStatus;
-  final String shippingStatus;   // 👈 NOVO
-  final DateTime? createdAt;
-  final DateTime? updatedAt;     // 👈 opcional, já existe no JSON
 
+  // Envio
+  final String shippingStatus;
+
+  // Transportadora / prazo (podem vir com 2 nomes diferentes no JSON)
+  final String? freightService;   // ex: "JeT - Standard"
+  final String? freightDeadline;  // ex: "4 dias úteis"
+
+  // Datas
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  // Cliente completo carregado depois
   Client? client;
 
   Order({
@@ -53,26 +65,23 @@ class Order {
     required this.paymentProvider,
     required this.paymentId,
     required this.paymentStatus,
-    required this.shippingStatus,   // 👈 NOVO
+    required this.shippingStatus,
     required this.createdAt,
-    required this.updatedAt,        // 👈 NOVO
+    required this.updatedAt,
+    this.freightService,
+    this.freightDeadline,
     this.client,
   });
 
   factory Order.fromJson(Map<String, dynamic> json) {
     final paymentStatus = (json['paymentStatus'] ?? '').toString();
 
-    // Se o backend ainda não mandou shippingStatus,
-    // calcula um padrão em cima do paymentStatus:
-    // - se PAGO -> EM_SEPARACAO
-    // - senão   -> AGUARDANDO_PAGAMENTO
+    // ShippingStatus com fallback pros pedidos antigos
     String shippingStatus = (json['shippingStatus'] ?? '').toString();
     if (shippingStatus.isEmpty) {
-      if (paymentStatus.toUpperCase() == 'PAGO') {
-        shippingStatus = 'EM_SEPARACAO';
-      } else {
-        shippingStatus = 'AGUARDANDO_PAGAMENTO';
-      }
+      shippingStatus = paymentStatus.toUpperCase() == 'PAGO'
+          ? 'EM_SEPARACAO'
+          : 'AGUARDANDO_PAGAMENTO';
     }
 
     final itemsJson = (json['items'] as List?) ?? const [];
@@ -87,7 +96,14 @@ class Order {
       paymentProvider: json['paymentProvider'] ?? '',
       paymentId: json['paymentId'],
       paymentStatus: paymentStatus,
-      shippingStatus: shippingStatus,  // 👈
+      shippingStatus: shippingStatus,
+
+      // 🔥 Mapeia tanto freight* quanto shipping*
+      freightService:
+      json['freightService'] ?? json['shippingService'],
+      freightDeadline:
+      json['freightDeadline'] ?? json['shippingDeadline'],
+
       createdAt: json['createdAt'] != null
           ? DateTime.tryParse(json['createdAt'])
           : null,
@@ -100,4 +116,3 @@ class Order {
   int get totalItems =>
       items.fold<int>(0, (sum, item) => sum + item.qty);
 }
-

@@ -1763,6 +1763,33 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                                     ),
                                   ),
                                   const SizedBox(height: 4),
+                                  // FRETE — transportadora + prazo
+                                  if (order.freightService != null && order.freightService!.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            order.freightService!,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                          if (order.freightDeadline != null && order.freightDeadline!.isNotEmpty)
+                                            Text(
+                                              'Prazo: ${order.freightDeadline}',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.black45,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+
 
                                   // STATUS PAGAMENTO (clicável)
                                   InkWell(
