@@ -35,6 +35,10 @@ class _SalesClientsPageState extends State<SalesClientsPage>
   List<Order> _orders = [];
   List<Client> _clients = [];
 
+  // 🔎 Busca de clientes
+  final TextEditingController _clientSearchController = TextEditingController();
+  List<Client> _filteredClients = [];
+
   // 'ALL' = sem filtro, mostra todos
   String _shippingFilter = 'ALL';
 
@@ -81,7 +85,19 @@ class _SalesClientsPageState extends State<SalesClientsPage>
   void initState() {
     super.initState();
     _api = FratheliApiService();
+
+    // listener de busca
+    _clientSearchController.addListener(() {
+      _applyClientFilter(_clientSearchController.text);
+    });
+
     _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _clientSearchController.dispose();
+    super.dispose();
   }
 
   double _calcularLucroLiquidoMes(List<Order> paidThisMonth) {
@@ -101,8 +117,6 @@ class _SalesClientsPageState extends State<SalesClientsPage>
 
     return lucroLiquidoMes;
   }
-
-
 
   Widget _buildShippingFilterChips() {
     final options = <String, String>{
@@ -220,7 +234,9 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       final clients = await _api.fetchClients();
       setState(() {
         _clients = clients;
-        _attachClientsToOrders(); // 👈 SÓ AQUI
+        // inicialmente, mostra todos
+        _filteredClients = List.from(clients);
+        _attachClientsToOrders(); // 👈 continua igual
       });
     } catch (e) {
       setState(() {
@@ -232,6 +248,35 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       });
     }
   }
+
+  void _applyClientFilter(String query) {
+    final q = query.trim().toLowerCase();
+
+    if (q.isEmpty) {
+      setState(() {
+        _filteredClients = List.from(_clients);
+      });
+      return;
+    }
+
+    setState(() {
+      _filteredClients = _clients.where((c) {
+        final name = c.name.toLowerCase();
+        final phone = c.phone.toLowerCase();
+
+        // tirar caracteres não numéricos do telefone
+        final phoneDigits = c.phone.replaceAll(RegExp(r'\D'), '');
+        final qDigits = q.replaceAll(RegExp(r'\D'), '');
+
+        final matchName = name.contains(q);
+        final matchPhone =
+            phone.contains(q) || (qDigits.isNotEmpty && phoneDigits.contains(qDigits));
+
+        return matchName || matchPhone;
+      }).toList();
+    });
+  }
+
 
   String _formatDate(DateTime? dt) {
     if (dt == null) return '-';
@@ -2089,6 +2134,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       );
     }
 
+    // se não tem nenhum cliente mesmo
     if (_clients.isEmpty) {
       return RefreshIndicator(
         onRefresh: _loadClients,
@@ -2102,68 +2148,108 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadClients,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: _clients.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 4),
-        itemBuilder: (context, index) {
-          final c = _clients[index];
-
-          final cityState = [
-            c.address.city,
-            c.address.state,
-          ].where((s) => s.isNotEmpty).join(' - ');
-
-          final initials = c.name.trim().isNotEmpty
-              ? c.name.trim().split(' ').take(2).map((e) => e[0]).join()
-              : '?';
-
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+    return Column(
+      children: [
+        // 🔎 Campo de busca
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _clientSearchController,
+            decoration: InputDecoration(
+              hintText: 'Buscar por nome ou telefone...',
+              prefixIcon: const Icon(Icons.search),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 0,
+              ),
             ),
-            elevation: 1,
-            child: ListTile(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ClientDetailsPage(client: c),
+          ),
+        ),
+
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _loadClients,
+            child: _filteredClients.isEmpty
+                ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(height: 80),
+                Center(child: Text('Nenhum cliente corresponde à busca.')),
+              ],
+            )
+                : ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: _filteredClients.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 4),
+              itemBuilder: (context, index) {
+                final c = _filteredClients[index];
+
+                final cityState = [
+                  c.address.city,
+                  c.address.state,
+                ].where((s) => s.isNotEmpty).join(' - ');
+
+                final initials = c.name.trim().isNotEmpty
+                    ? c.name
+                    .trim()
+                    .split(' ')
+                    .take(2)
+                    .map((e) => e[0])
+                    .join()
+                    : '?';
+
+                return Card(
+                  margin: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 1,
+                  child: ListTile(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ClientDetailsPage(client: c),
+                        ),
+                      );
+                    },
+                    leading: CircleAvatar(
+                      backgroundColor:
+                      const Color(0xFFD4AF37).withOpacity(0.85),
+                      child: Text(
+                        initials.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    title: Text(c.name.isEmpty ? '(sem nome)' : c.name),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (c.phone.isNotEmpty) Text(c.phone),
+                        if (cityState.isNotEmpty)
+                          Text(
+                            cityState,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                      ],
+                    ),
                   ),
                 );
               },
-
-              leading: CircleAvatar(
-                backgroundColor: const Color(0xFFD4AF37).withOpacity(0.85),
-                child: Text(
-                  initials.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.black87,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              title: Text(c.name.isEmpty ? '(sem nome)' : c.name),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (c.phone.isNotEmpty) Text(c.phone),
-                  if (cityState.isNotEmpty)
-                    Text(
-                      cityState,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                ],
-              ),
             ),
-          );
-        },
-      ),
+          ),
+        ),
+      ],
     );
   }
+
 }
 
 // ---------------------------------------------------------------------------
