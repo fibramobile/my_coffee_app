@@ -49,7 +49,6 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     }).toList();
   }
 
-
   Color _shippingStatusColor(String status) {
     switch (status.toUpperCase()) {
       case 'AGUARDANDO_PAGAMENTO':
@@ -79,6 +78,28 @@ class _SalesClientsPageState extends State<SalesClientsPage>
         return status;
     }
   }
+
+  Color _moneyColor(double value) {
+    if (value < 0) return Colors.red.shade700;
+    if (value == 0) return Colors.grey.shade700;
+    // positivo
+    return Colors.green.shade700;
+  }
+
+  /// Para "atenção" quando está positivo, porém baixo
+  Color _profitColor(double lucro, {double baixoAte = 20}) {
+    if (lucro < 0) return Colors.red.shade700;
+    if (lucro <= baixoAte) return Colors.orange.shade800;
+    return Colors.green.shade700;
+  }
+
+  /// Se quiser usar em "pendente" etc.
+  Color _warningColor(double value, {double altoAPartir = 200}) {
+    if (value >= altoAPartir) return Colors.red.shade700;
+    if (value > 0) return Colors.orange.shade800;
+    return Colors.grey.shade700;
+  }
+
 
 
   @override
@@ -276,7 +297,6 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       }).toList();
     });
   }
-
 
   String _formatDate(DateTime? dt) {
     if (dt == null) return '-';
@@ -685,7 +705,9 @@ class _SalesClientsPageState extends State<SalesClientsPage>
 
     final now = DateTime.now();
 
-    // Pedidos pagos no mês atual
+    // -------------------------------
+    // PEDIDOS PAGOS NO MÊS
+    // -------------------------------
     final paidThisMonth = _orders.where((o) {
       if (o.createdAt == null) return false;
       final s = o.paymentStatus.toUpperCase();
@@ -699,27 +721,31 @@ class _SalesClientsPageState extends State<SalesClientsPage>
           (sum, o) => sum + o.total,
     );
 
-    // 👉 Lucro líquido do mês (usando a margem da precificação)
     final lucroLiquidoMes = _calcularLucroLiquidoMes(paidThisMonth);
 
-    // NOVO: separar quanto é produto e quanto é frete (somente pedidos pagos no mês)
+    // ✅ AQUI ESTÁ A VARIÁVEL QUE ESTAVA FALTANDO
+    final margemLiquidaMesPct = totalSoldThisMonth == 0
+        ? 0.0
+        : (lucroLiquidoMes / totalSoldThisMonth) * 100.0;
+
+    // -------------------------------
+    // PRODUTOS x FRETE (PAGOS)
+    // -------------------------------
     double totalProdutosMes = 0.0;
     double totalFreteMes = 0.0;
 
     for (final o in paidThisMonth) {
-      // soma dos itens (valor de produto)
       final totalItens = o.items.fold<double>(
         0.0,
             (sum, item) => sum + (item.unitPrice * item.qty),
       );
       totalProdutosMes += totalItens;
-
-      // campo real de frete
-      final frete = o.shipping;
-      totalFreteMes += frete;
+      totalFreteMes += o.shipping;
     }
 
-    // Total pendente (tudo que não é PAGO / CANCELADO)
+    // -------------------------------
+    // PENDENTES
+    // -------------------------------
     final pendingOrders = _orders.where((o) {
       final s = o.paymentStatus.toUpperCase();
       return s != 'PAGO' && s != 'CANCELADO';
@@ -730,55 +756,12 @@ class _SalesClientsPageState extends State<SalesClientsPage>
           (sum, o) => sum + o.total,
     );
 
-    // Ticket médio (considerando só pedidos pagos NO MÊS)
+    // -------------------------------
+    // TICKET MÉDIO
+    // -------------------------------
     final ticketMedio = paidThisMonth.isEmpty
         ? 0.0
-        : paidThisMonth.fold<double>(
-      0.0,
-          (sum, o) => sum + o.total,
-    ) /
-        paidThisMonth.length;
-
-    // RANKING de produtos (só pedidos PAGOS)
-    final Map<String, _ProductAgg> produtosAgg = {};
-    for (final o in _orders.where(
-            (o) => o.paymentStatus.toUpperCase() == 'PAGO')) {
-      for (final item in o.items) {
-        final key = item.sku;
-        final existing = produtosAgg[key];
-        if (existing == null) {
-          produtosAgg[key] = _ProductAgg(
-            sku: item.sku,
-            name: item.name,
-            qty: item.qty,
-            total: item.qty * item.unitPrice,
-          );
-        } else {
-          existing.qty += item.qty;
-          existing.total += item.qty * item.unitPrice;
-        }
-      }
-    }
-
-    final produtosList = produtosAgg.values.toList()
-      ..sort((a, b) => b.qty.compareTo(a.qty));
-
-    // Top 10 produtos mais vendidos
-    final topProdutos = produtosList.take(10).toList();
-
-    // Mapa de envios por UF (apenas pedidos PAGOS)
-    final Map<String, int> enviosPorUf = {};
-    for (final o in _orders) {
-      if (o.paymentStatus.toUpperCase() != 'PAGO') continue;
-
-      final uf = (o.client?.address.state ?? '').trim().toUpperCase();
-      if (uf.isEmpty) continue;
-
-      enviosPorUf[uf] = (enviosPorUf[uf] ?? 0) + 1;
-    }
-
-    final enviosList = enviosPorUf.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+        : totalSoldThisMonth / paidThisMonth.length;
 
     return RefreshIndicator(
       onRefresh: _loadAll,
@@ -786,10 +769,11 @@ class _SalesClientsPageState extends State<SalesClientsPage>
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
-          // RESUMO DO MÊS
+          // ===================================================
+          // CARD RESUMO DO MÊS
+          // ===================================================
           Card(
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             elevation: 2,
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -809,76 +793,168 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                         ?.copyWith(color: Colors.grey[700]),
                   ),
                   const SizedBox(height: 12),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isNarrow = constraints.maxWidth < 600;
 
-                      if (isNarrow) {
-                        // MOBILE: empilha tudo, inclusive o lucro
-                        return Column(
-                          children: [
-                            _DashboardNumber(
-                              label: 'Total vendido (PAGO)',
-                              value: _formatCurrency(totalSoldThisMonth),
-                            ),
-                            const SizedBox(height: 12),
-                            _DashboardNumber(
-                              label: 'Total pendente',
-                              value: _formatCurrency(totalPending),
-                            ),
-                            const SizedBox(height: 12),
-                            _DashboardNumber(
-                              label: 'Ticket médio (mês)',
-                              value: _formatCurrency(ticketMedio),
-                            ),
-                            const SizedBox(height: 12),
-                            _DashboardNumber(
-                              label: 'Lucro líquido (mês)',
-                              value: _formatCurrency(lucroLiquidoMes),
-                            ),
-                          ],
-                        );
-                      }
+                  // ✅ CÁLCULOS (margem real sem frete)
+                  Builder(
+                    builder: (_) {
+                      final double receitaProdutosMes = totalProdutosMes; // (PAGO) só produtos
+                      final double margemLiquidaMesPct = receitaProdutosMes <= 0
+                          ? 0
+                          : (lucroLiquidoMes / receitaProdutosMes) * 100;
 
-                      // DESKTOP: lado a lado
-                      return Wrap(
-                        spacing: 16,
-                        runSpacing: 12,
-                        children: [
-                          _DashboardNumber(
-                            label: 'Total vendido (PAGO)',
-                            value: _formatCurrency(totalSoldThisMonth),
-                          ),
-                          _DashboardNumber(
-                            label: 'Total pendente',
-                            value: _formatCurrency(totalPending),
-                          ),
-                          _DashboardNumber(
-                            label: 'Ticket médio (mês)',
-                            value: _formatCurrency(ticketMedio),
-                          ),
-                          _DashboardNumber(
-                            label: 'Lucro líquido (mês)',
-                            value: _formatCurrency(lucroLiquidoMes),
-                          ),
-                        ],
+                      return LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 600;
+
+                          if (isNarrow) {
+                            // MOBILE
+                            return Column(
+                              children: [
+                                _DashboardNumber(
+                                  label: 'Total vendido (PAGO)',
+                                  value: _formatCurrency(totalSoldThisMonth),
+                                  icon: Icons.attach_money,
+                                  valueColor: Colors.green.shade800,
+                                  badgeText: paidThisMonth.isEmpty
+                                      ? 'Sem vendas'
+                                      : '${paidThisMonth.length} pedidos',
+                                  badgeColor: Colors.green.shade700,
+                                ),
+                                const SizedBox(height: 12),
+
+                                _DashboardNumber(
+                                  label: 'Total pendente',
+                                  value: _formatCurrency(totalPending),
+                                  icon: Icons.hourglass_top,
+                                  valueColor: _warningColor(totalPending, altoAPartir: 300),
+                                  badgeColor: _warningColor(totalPending, altoAPartir: 300),
+                                  badgeText: pendingOrders.isEmpty
+                                      ? 'OK'
+                                      : '${pendingOrders.length} pendentes',
+                                ),
+                                const SizedBox(height: 12),
+
+                                _DashboardNumber(
+                                  label: 'Ticket médio (mês)',
+                                  value: _formatCurrency(ticketMedio),
+                                  icon: Icons.analytics_outlined,
+                                  valueColor: const Color(0xFF2D2213),
+                                ),
+                                const SizedBox(height: 12),
+
+                                _DashboardNumber(
+                                  label: 'Lucro líquido (mês)',
+                                  value: _formatCurrency(lucroLiquidoMes),
+                                  icon: Icons.trending_up,
+                                  valueColor: _profitColor(lucroLiquidoMes, baixoAte: 30),
+                                  badgeText: lucroLiquidoMes < 0
+                                      ? 'Prejuízo'
+                                      : (lucroLiquidoMes <= 30 ? 'Atenção' : 'Saudável'),
+                                  badgeColor: _profitColor(lucroLiquidoMes, baixoAte: 30),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // ✅ MARGEM REAL (sem frete)
+                                _DashboardNumber(
+                                  label: 'Margem líquida (mês)',
+                                  value:
+                                  '${margemLiquidaMesPct.toStringAsFixed(1).replaceAll('.', ',')}%',
+                                  icon: Icons.percent,
+                                  valueColor: margemLiquidaMesPct < 8
+                                      ? Colors.red.shade700
+                                      : (margemLiquidaMesPct < 15
+                                      ? Colors.orange.shade800
+                                      : Colors.green.shade700),
+                                  badgeText: margemLiquidaMesPct < 8
+                                      ? 'Baixa'
+                                      : (margemLiquidaMesPct < 15 ? 'Boa' : 'Excelente'),
+                                  badgeColor: margemLiquidaMesPct < 8
+                                      ? Colors.red.shade700
+                                      : (margemLiquidaMesPct < 15
+                                      ? Colors.orange.shade800
+                                      : Colors.green.shade700),
+                                ),
+                              ],
+                            );
+                          }
+
+                          // DESKTOP
+                          return Wrap(
+                            spacing: 16,
+                            runSpacing: 12,
+                            children: [
+                              _DashboardNumber(
+                                label: 'Total vendido (PAGO)',
+                                value: _formatCurrency(totalSoldThisMonth),
+                                icon: Icons.attach_money,
+                                valueColor: Colors.green.shade800,
+                              ),
+                              _DashboardNumber(
+                                label: 'Total pendente',
+                                value: _formatCurrency(totalPending),
+                                icon: Icons.hourglass_top,
+                                valueColor: _warningColor(totalPending, altoAPartir: 300),
+                              ),
+                              _DashboardNumber(
+                                label: 'Ticket médio (mês)',
+                                value: _formatCurrency(ticketMedio),
+                                icon: Icons.analytics_outlined,
+                              ),
+                              _DashboardNumber(
+                                label: 'Lucro líquido (mês)',
+                                value: _formatCurrency(lucroLiquidoMes),
+                                icon: Icons.trending_up,
+                                valueColor: _profitColor(lucroLiquidoMes, baixoAte: 30),
+                              ),
+
+                              // ✅ MARGEM REAL (sem frete)
+                              _DashboardNumber(
+                                label: 'Margem líquida (mês)',
+                                value:
+                                '${margemLiquidaMesPct.toStringAsFixed(1).replaceAll('.', ',')}%',
+                                icon: Icons.percent,
+                                valueColor: margemLiquidaMesPct < 8
+                                    ? Colors.red.shade700
+                                    : (margemLiquidaMesPct < 15
+                                    ? Colors.orange.shade800
+                                    : Colors.green.shade700),
+                                badgeText: margemLiquidaMesPct < 8
+                                    ? 'Baixa'
+                                    : (margemLiquidaMesPct < 15 ? 'Boa' : 'Excelente'),
+                                badgeColor: margemLiquidaMesPct < 8
+                                    ? Colors.red.shade700
+                                    : (margemLiquidaMesPct < 15
+                                    ? Colors.orange.shade800
+                                    : Colors.green.shade700),
+                              ),
+                            ],
+                          );
+                        },
                       );
                     },
                   ),
 
                   const SizedBox(height: 16),
 
-                  // Quebra Produtos x Frete
+                  // Quebra Produtos x Frete (ambos informativos)
                   Row(
                     children: [
-                      _DashboardNumber(
-                        label: 'Produtos (PAGO)',
-                        value: _formatCurrency(totalProdutosMes),
+                      Expanded(
+                        child: _DashboardNumber(
+                          label: 'Produtos (PAGO)',
+                          value: _formatCurrency(totalProdutosMes),
+                          icon: Icons.inventory_2_outlined,
+                          valueColor: const Color(0xFF2D2213),
+                        ),
                       ),
-                      const SizedBox(width: 16),
-                      _DashboardNumber(
-                        label: 'Frete (PAGO)',
-                        value: _formatCurrency(totalFreteMes),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DashboardNumber(
+                          label: 'Frete (PAGO pelo cliente)',
+                          value: _formatCurrency(totalFreteMes),
+                          icon: Icons.local_shipping_outlined,
+                          valueColor: Colors.blueGrey.shade700,
+                        ),
                       ),
                     ],
                   ),
@@ -887,124 +963,11 @@ class _SalesClientsPageState extends State<SalesClientsPage>
             ),
           ),
 
-          const SizedBox(height: 16),
-
-          // PRODUTOS MAIS VENDIDOS (ranking)
-          Card(
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Produtos mais vendidos',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  if (topProdutos.isEmpty)
-                    const Text(
-                      'Nenhum pedido pago ainda para calcular produtos.',
-                    )
-                  else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: topProdutos.length,
-                      separatorBuilder: (_, __) =>
-                      const Divider(height: 12, thickness: 0.3),
-                      itemBuilder: (context, index) {
-                        final p = topProdutos[index];
-                        return ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            radius: 14,
-                            child: Text(
-                              '${index + 1}',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                          title: Text(
-                            p.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            'SKU: ${p.sku}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                          trailing: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '${p.qty} ${p.qty == 1 ? 'unidade' : 'unidades'}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _formatCurrency(p.total),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // MAPA DE ENVIOS (por UF)
-          Card(
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Mapa de envios por UF',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  if (enviosList.isEmpty)
-                    const Text(
-                      'Ainda não há pedidos pagos com UF informado.',
-                    )
-                  else
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: enviosList.map((e) {
-                        return Chip(
-                          backgroundColor:
-                          const Color(0xFFEEE3C7).withOpacity(0.7),
-                          label: Text(
-                            '${e.key} · ${e.value} ${e.value == 1 ? 'pedido' : 'pedidos'}',
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 120),
         ],
       ),
     );
   }
+
 
   // ---------------------------------------------------------------------------
   // PEDIDOS
@@ -2260,37 +2223,88 @@ class _DashboardNumber extends StatelessWidget {
   final String label;
   final String value;
 
+  /// NOVO
+  final Color? valueColor;
+  final IconData? icon;
+  final String? badgeText;
+  final Color? badgeColor;
+
   const _DashboardNumber({
     Key? key,
     required this.label,
     required this.value,
+    this.valueColor,
+    this.icon,
+    this.badgeText,
+    this.badgeColor,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final c = valueColor ?? const Color(0xFF2D2213);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: Colors.grey[700],
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 16, color: Colors.black54),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.grey[700],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (badgeText != null && badgeText!.isNotEmpty) ...[
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: (badgeColor ?? c).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: (badgeColor ?? c).withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    badgeText!,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: badgeColor ?? c,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ]
+            ],
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+              color: c,
+              letterSpacing: -0.2,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
+
 
 
 class _ProductAgg {
