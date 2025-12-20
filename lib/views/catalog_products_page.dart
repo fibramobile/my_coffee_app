@@ -1,12 +1,14 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/catalog_product.dart';
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
 
+import 'package:image_picker/image_picker.dart';
+import 'package:mime/mime.dart';
+import 'package:http_parser/http_parser.dart';
 
 class CatalogProductsPage extends StatefulWidget {
   const CatalogProductsPage({Key? key}) : super(key: key);
@@ -26,6 +28,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
   static const _saveEndpoint =
       'https://smapps.16mb.com/fratheli/app/products/save_products.php';
 
+  String? _uploadedImagePath; // ex: "images/bugia_250.jpg"
 
   @override
   void initState() {
@@ -34,7 +37,6 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
   }
 
   // ---------------- CARREGAR ----------------
-
   Future<void> _loadFromRemote() async {
     setState(() => _isLoading = true);
 
@@ -67,7 +69,6 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
   }
 
   // ---------------- SALVAR ----------------
-
   Map<String, dynamic> _buildDataObject() {
     return {
       'updatedAt': DateTime.now().toIso8601String(),
@@ -117,275 +118,93 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
     }
   }
 
-  String? _uploadedImagePath; // ex: "images/bugia_250.jpg"
-
+  // ---------------- UPLOAD IMAGEM (WEB + MOBILE) ----------------
   Future<void> _pickAndUploadImage(TextEditingController imgController) async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
 
     if (picked == null) return;
 
-    final file = File(picked.path);
+    // ✅ pega bytes (funciona no WEB e no MOBILE)
+    final Uint8List bytes = await picked.readAsBytes();
+    final String filename = picked.name.isNotEmpty ? picked.name : 'image.jpg';
 
     final uri = Uri.parse(
       'https://smapps.16mb.com/fratheli/app/products/upload_product_image.php',
     );
 
     final request = http.MultipartRequest('POST', uri);
+
+    // tenta descobrir mime (image/jpeg, image/png etc)
+    final mimeType =
+        lookupMimeType(filename, headerBytes: bytes) ?? 'image/jpeg';
+    final parts = mimeType.split('/');
+    final contentType =
+    MediaType(parts[0], parts.length > 1 ? parts[1] : 'jpeg');
+
     request.files.add(
-      await http.MultipartFile.fromPath('file', file.path),
+      http.MultipartFile.fromBytes(
+        'file', // ⚠️ tem que bater com seu PHP: $_FILES['file']
+        bytes,
+        filename: filename,
+        contentType: contentType,
+      ),
     );
 
-    final response = await request.send();
+    final streamed = await request.send();
+    final status = streamed.statusCode;
+    final body = await streamed.stream.bytesToString();
 
-    if (response.statusCode == 200) {
-      final body = await response.stream.bytesToString();
-      final data = jsonDecode(body);
-      if (data['success'] == true) {
-        setState(() {
-          _uploadedImagePath = data['path'];     // ex: images/xxx.jpg
-          imgController.text = _uploadedImagePath!; // ⬅️ ESSENCIAL
-        });
+    if (!mounted) return;
+
+    if (status == 200) {
+      try {
+        final data = jsonDecode(body);
+
+        if (data['success'] == true) {
+          setState(() {
+            _uploadedImagePath = data['path']; // ex: images/xxx.jpg
+            imgController.text = _uploadedImagePath!; // ✅ atualiza campo
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Imagem enviada com sucesso.')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro: ${data['error'] ?? 'desconhecido'}')),
+          );
+        }
+      } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Imagem enviada com sucesso.')),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: ${data['error']}')),
+          SnackBar(content: Text('Resposta inválida do servidor: $body')),
         );
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('HTTP ${response.statusCode} no upload.')),
+        SnackBar(content: Text('HTTP $status no upload. Body: $body')),
       );
     }
   }
 
-
-
   // ---------------- CRUD ----------------
-/*
   Future<void> _addOrEditProduct({CatalogProduct? editing}) async {
     final isEditing = editing != null;
 
     final skuController = TextEditingController(text: editing?.sku ?? '');
     final nameController = TextEditingController(text: editing?.name ?? '');
+    final pricingNameController =
+    TextEditingController(text: editing?.pricingName ?? '');
     final descController =
     TextEditingController(text: editing?.description ?? '');
     final imgController =
     TextEditingController(text: editing?.imagePath ?? '');
-    final pricingNameController =
-    TextEditingController(text: editing?.pricingName ?? '');
-    final originalPriceController = TextEditingController(
-      text: editing?.originalPrice != null
-          ? editing!.originalPrice!.toStringAsFixed(2)
-          : '',
-    );
     final fallbackPriceController = TextEditingController(
-      text: editing != null ? editing.fallbackPrice.toStringAsFixed(2) : '0.00',
-    );
-    final tagController = TextEditingController(text: editing?.tag ?? '');
-    final metaController = TextEditingController(text: editing?.meta ?? '');
-    bool tagAlt = editing?.tagAlt ?? false;
-    bool inStock = editing?.inStock ?? true;
-    // Preview da imagem (nova ou existente)
-    final previewPath = _uploadedImagePath ?? imgController.text.trim();
-
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(isEditing ? 'Editar produto' : 'Novo produto'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: skuController,
-                  decoration: const InputDecoration(labelText: 'SKU'),
-                ),
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Nome'),
-                ),
-                TextField(
-                  controller: pricingNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome na precificação',
-                    hintText: 'Ex: Mel de Bugia',
-                  ),
-                ),
-                TextField(
-                  controller: fallbackPriceController,
-                  keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Preço base (fallback)',
-                    prefixText: 'R\$ ',
-                  ),
-                ),
-                TextField(
-                  controller: originalPriceController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Preço cheio (antes do desconto)',
-                    prefixText: 'R\$ ',
-                    hintText: 'Ex: 52,90',
-                  ),
-                ),
-
-                TextField(
-                  controller: descController,
-                  maxLines: 3,
-                  decoration:
-                  const InputDecoration(labelText: 'Descrição (site)'),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Imagem do produto',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 8),
-
-                    // Botão para escolher e enviar imagem
-                    ElevatedButton.icon(
-                      onPressed: () => _pickAndUploadImage(imgController),
-                      icon: const Icon(Icons.image),
-                      label: const Text('Selecionar imagem'),
-                    ),
-
-                    const SizedBox(height: 8),
-
-
-                    if (previewPath.isNotEmpty)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          'https://smapps.16mb.com/fratheli/app/products/$previewPath',
-                          height: 140,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-
-                  ],
-                ),
-
-                TextField(
-                  controller: tagController,
-                  decoration: const InputDecoration(
-                    labelText: 'Tag (ex: PREMIUM, LIMITADO)',
-                  ),
-                ),
-                TextField(
-                  controller: metaController,
-                  decoration: const InputDecoration(
-                    labelText: 'Meta / subtítulo',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('Tag alternativa (tagAlt)'),
-                  value: tagAlt,
-                  onChanged: (v) {
-                    tagAlt = v;
-                    (context as Element).markNeedsBuild();
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Em estoque (inStock)'),
-                  value: inStock,
-                  onChanged: (v) {
-                    inStock = v;
-                    (context as Element).markNeedsBuild();
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Cancelar'),
-              onPressed: () => Navigator.pop(context),
-            ),
-            ElevatedButton(
-              child: Text(isEditing ? 'Salvar alterações' : 'Adicionar'),
-              onPressed: () {
-                final sku = skuController.text.trim();
-                final name = nameController.text.trim();
-                final pricingName = pricingNameController.text.trim();
-
-                if (sku.isEmpty || name.isEmpty || pricingName.isEmpty) {
-                  return;
-                }
-
-                final fallbackPrice = double.tryParse(
-                  fallbackPriceController.text.replaceAll(',', '.').trim(),
-                ) ??
-                    0.0;
-
-                final originalPrice = double.tryParse(
-                  originalPriceController.text.replaceAll(',', '.').trim(),
-                );
-
-
-                setState(() {
-                  if (isEditing) {
-                    editing!.sku = sku;
-                    editing.name = name;
-                    editing.description = descController.text.trim();
-                    editing.imagePath = imgController.text.trim();
-                    editing.pricingName = pricingName;
-                    editing.fallbackPrice = fallbackPrice;
-                    editing.originalPrice = originalPrice; // 🔥 novo
-                    editing.tag = tagController.text.trim();
-                    editing.meta = metaController.text.trim();
-                    editing.tagAlt = tagAlt;
-                    editing.inStock = inStock;
-                  } else {
-                    _products.add(
-                      CatalogProduct(
-                        sku: sku,
-                        name: name,
-                        description: descController.text.trim(),
-                        imagePath: imgController.text.trim(),
-                        pricingName: pricingName,
-                        fallbackPrice: fallbackPrice,
-                        originalPrice: originalPrice, // 🔥 novo
-                        tag: tagController.text.trim(),
-                        tagAlt: tagAlt,
-                        meta: metaController.text.trim(),
-                        inStock: inStock,
-                      ),
-                    );
-                  }
-                });
-
-
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        );
-      },
-    );
-
-    await _saveToServer();
-  }
-  */
-  Future<void> _addOrEditProduct({CatalogProduct? editing}) async {
-    final isEditing = editing != null;
-
-    final skuController = TextEditingController(text: editing?.sku ?? '');
-    final nameController = TextEditingController(text: editing?.name ?? '');
-    final pricingNameController = TextEditingController(text: editing?.pricingName ?? '');
-    final descController = TextEditingController(text: editing?.description ?? '');
-    final imgController = TextEditingController(text: editing?.imagePath ?? '');
-    final fallbackPriceController = TextEditingController(
-      text: editing != null
-          ? editing.fallbackPrice.toStringAsFixed(2)
-          : '',
+      text: editing != null ? editing.fallbackPrice.toStringAsFixed(2) : '',
     );
     final originalPriceController = TextEditingController(
       text: (editing?.originalPrice != null)
@@ -400,16 +219,13 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
 
     // 🔥 OPÇÕES DE MOAGEM (Grão / Moído)
     final existingGrinds = editing?.grindOptions ?? const <String>[];
-
     bool grindGrao =
     existingGrinds.isEmpty ? true : existingGrinds.contains('Grão');
     bool grindMoido =
     existingGrinds.isEmpty ? true : existingGrinds.contains('Moído');
 
     String defaultGrindLocal = editing?.defaultGrind ??
-        (grindGrao
-            ? 'Grão'
-            : (grindMoido ? 'Moído' : 'Grão')); // fallback quando nada marcado
+        (grindGrao ? 'Grão' : (grindMoido ? 'Moído' : 'Grão'));
 
     String getPreviewPath() => _uploadedImagePath ?? imgController.text.trim();
 
@@ -417,9 +233,11 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
       context: context,
       builder: (dialogCtx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           backgroundColor: const Color(0xFFF6EEE0),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          insetPadding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
           titlePadding:
           const EdgeInsets.only(top: 16, left: 20, right: 20, bottom: 8),
           contentPadding:
@@ -435,24 +253,17 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // SKU
                   TextField(
                     controller: skuController,
-                    decoration: const InputDecoration(
-                      labelText: 'SKU',
-                    ),
+                    decoration: const InputDecoration(labelText: 'SKU'),
                   ),
                   const SizedBox(height: 10),
-
-                  // Nome + Nome na precificação
                   TextField(
                     controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nome (ex: 250g)',
-                    ),
+                    decoration:
+                    const InputDecoration(labelText: 'Nome (ex: 250g)'),
                   ),
                   const SizedBox(height: 10),
-
                   TextField(
                     controller: pricingNameController,
                     decoration: const InputDecoration(
@@ -462,7 +273,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // PREÇOS LADO A LADO
+                  // PREÇOS
                   Row(
                     children: [
                       Expanded(
@@ -497,111 +308,88 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                   TextField(
                     controller: descController,
                     maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Descrição (site)',
-                    ),
+                    decoration:
+                    const InputDecoration(labelText: 'Descrição (site)'),
                   ),
                   const SizedBox(height: 16),
 
-                // DESCRIÇÃO
-                TextField(
-                  controller: descController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Descrição (site)',
+                  // MOAGEM
+                  Text(
+                    'Opções de moagem',
+                    style: Theme.of(dialogCtx).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-
-                // 🔥 OPÇÕES DE MOAGEM
-                Text(
-                  'Opções de moagem',
-                  style: Theme.of(dialogCtx).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    title: const Text('Grão (inteiro)'),
+                    value: grindGrao,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    onChanged: (v) {
+                      grindGrao = v ?? false;
+                      if (!grindGrao && defaultGrindLocal == 'Grão') {
+                        if (grindMoido) defaultGrindLocal = 'Moído';
+                      }
+                      (dialogCtx as Element).markNeedsBuild();
+                    },
                   ),
-                ),
-                const SizedBox(height: 8),
-
-                CheckboxListTile(
-                  title: const Text('Grão (inteiro)'),
-                  value: grindGrao,
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  onChanged: (v) {
-                    grindGrao = v ?? false;
-
-                    // se desmarcar Grão e ele era o default, ajusta
-                    if (!grindGrao && defaultGrindLocal == 'Grão') {
-                      if (grindMoido) {
-                        defaultGrindLocal = 'Moído';
+                  CheckboxListTile(
+                    title: const Text('Moído'),
+                    value: grindMoido,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    onChanged: (v) {
+                      grindMoido = v ?? false;
+                      if (!grindMoido && defaultGrindLocal == 'Moído') {
+                        if (grindGrao) defaultGrindLocal = 'Grão';
                       }
-                    }
+                      (dialogCtx as Element).markNeedsBuild();
+                    },
+                  ),
+                  if (grindGrao || grindMoido) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Moagem padrão no site/app',
+                      style: Theme.of(dialogCtx)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
 
-                    (dialogCtx as Element).markNeedsBuild();
-                  },
-                ),
-                CheckboxListTile(
-                  title: const Text('Moído'),
-                  value: grindMoido,
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  onChanged: (v) {
-                    grindMoido = v ?? false;
-
-                    // se desmarcar Moído e ele era o default, ajusta
-                    if (!grindMoido && defaultGrindLocal == 'Moído') {
-                      if (grindGrao) {
-                        defaultGrindLocal = 'Grão';
+                    RadioListTile<String>(
+                      title: const Text('Grão'),
+                      value: 'Grão',
+                      groupValue: defaultGrindLocal,
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: grindGrao
+                          ? (v) {
+                        defaultGrindLocal = v!;
+                        (dialogCtx as Element).markNeedsBuild();
                       }
-                    }
+                          : null,
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Moído'),
+                      value: 'Moído',
+                      groupValue: defaultGrindLocal,
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: grindMoido
+                          ? (v) {
+                        defaultGrindLocal = v!;
+                        (dialogCtx as Element).markNeedsBuild();
+                      }
+                          : null,
+                    ),
+                  ],
+                  const SizedBox(height: 16),
 
-                    (dialogCtx as Element).markNeedsBuild();
-                  },
-                ),
-
-                if (grindGrao || grindMoido) ...[
-              const SizedBox(height: 4),
-            Text(
-              'Moagem padrão no site/app',
-              style: Theme.of(dialogCtx)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            RadioListTile<String>(
-              title: const Text('Grão'),
-              value: 'Grão',
-              groupValue: defaultGrindLocal,
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              onChanged: grindGrao
-                  ? (v) {
-                defaultGrindLocal = v!;
-                (dialogCtx as Element).markNeedsBuild();
-              }
-                  : null,
-            ),
-            RadioListTile<String>(
-              title: const Text('Moído'),
-              value: 'Moído',
-              groupValue: defaultGrindLocal,
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              onChanged: grindMoido
-                  ? (v) {
-                defaultGrindLocal = v!;
-                (dialogCtx as Element).markNeedsBuild();
-              }
-                  : null,
-            ),
-            ],
-
-            const SizedBox(height: 16),
-
-        // IMAGEM
+                  // IMAGEM
                   Text(
                     'Imagem do produto',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    style: Theme.of(dialogCtx).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -616,7 +404,6 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                     ),
                     onPressed: () async {
                       await _pickAndUploadImage(imgController);
-                      // força rebuild do preview
                       (dialogCtx as Element).markNeedsBuild();
                     },
                     icon: const Icon(Icons.image),
@@ -636,12 +423,10 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                     ),
                   const SizedBox(height: 20),
 
-                  // TAG + META
                   TextField(
                     controller: tagController,
                     decoration: const InputDecoration(
-                      labelText: 'Tag (ex: ORIGEM, PREMIUM)',
-                    ),
+                        labelText: 'Tag (ex: ORIGEM, PREMIUM)'),
                   ),
                   const SizedBox(height: 10),
                   TextField(
@@ -653,7 +438,6 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                   ),
                   const SizedBox(height: 8),
 
-                  // SWITCHES
                   SwitchListTile(
                     title: const Text('Tag alternativa (tagAlt)'),
                     value: tagAlt,
@@ -677,81 +461,12 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
             ),
           ),
           actionsPadding:
-          const EdgeInsets.only(left: 16, right: 16, bottom: 12, top: 0),
+          const EdgeInsets.only(left: 16, right: 16, bottom: 12),
           actions: [
             TextButton(
               child: const Text('Cancelar'),
               onPressed: () => Navigator.pop(dialogCtx),
             ),
-            /*
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD4AF37),
-                foregroundColor: Colors.black87,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-              child: Text(isEditing ? 'Salvar alterações' : 'Adicionar'),
-              onPressed: () {
-                final sku = skuController.text.trim();
-                final name = nameController.text.trim();
-                final pricingName = pricingNameController.text.trim();
-
-                if (sku.isEmpty || name.isEmpty || pricingName.isEmpty) {
-                  return;
-                }
-
-                final fallbackPrice = double.tryParse(
-                  fallbackPriceController.text
-                      .replaceAll(',', '.')
-                      .trim(),
-                ) ??
-                    0.0;
-
-                final originalPrice = double.tryParse(
-                  originalPriceController.text
-                      .replaceAll(',', '.')
-                      .trim(),
-                );
-
-                setState(() {
-                  if (isEditing) {
-                    editing!.sku = sku;
-                    editing.name = name;
-                    editing.description = descController.text.trim();
-                    editing.imagePath = imgController.text.trim();
-                    editing.pricingName = pricingName;
-                    editing.fallbackPrice = fallbackPrice;
-                    editing.originalPrice = originalPrice;
-                    editing.tag = tagController.text.trim();
-                    editing.meta = metaController.text.trim();
-                    editing.tagAlt = tagAlt;
-                    editing.inStock = inStock;
-                  } else {
-                    _products.add(
-                      CatalogProduct(
-                        sku: sku,
-                        name: name,
-                        description: descController.text.trim(),
-                        imagePath: imgController.text.trim(),
-                        pricingName: pricingName,
-                        fallbackPrice: fallbackPrice,
-                        originalPrice: originalPrice,
-                        tag: tagController.text.trim(),
-                        tagAlt: tagAlt,
-                        meta: metaController.text.trim(),
-                        inStock: inStock,
-                      ),
-                    );
-                  }
-                });
-
-                Navigator.pop(dialogCtx);
-              },
-            ),
-
-             */
             ElevatedButton(
               child: Text(isEditing ? 'Salvar alterações' : 'Adicionar'),
               onPressed: () {
@@ -759,24 +474,17 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                 final name = nameController.text.trim();
                 final pricingName = pricingNameController.text.trim();
 
-                if (sku.isEmpty || name.isEmpty || pricingName.isEmpty) {
-                  return;
-                }
+                if (sku.isEmpty || name.isEmpty || pricingName.isEmpty) return;
 
                 final fallbackPrice = double.tryParse(
-                  fallbackPriceController.text
-                      .replaceAll(',', '.')
-                      .trim(),
+                  fallbackPriceController.text.replaceAll(',', '.').trim(),
                 ) ??
                     0.0;
 
                 final originalPrice = double.tryParse(
-                  originalPriceController.text
-                      .replaceAll(',', '.')
-                      .trim(),
+                  originalPriceController.text.replaceAll(',', '.').trim(),
                 );
 
-                // 🔥 monta a lista de moagem
                 final List<String> grindOptions = [];
                 if (grindGrao) grindOptions.add('Grão');
                 if (grindMoido) grindOptions.add('Moído');
@@ -800,8 +508,6 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                     editing.meta = metaController.text.trim();
                     editing.tagAlt = tagAlt;
                     editing.inStock = inStock;
-
-                    // 🔥 novos campos
                     editing.grindOptions = grindOptions;
                     editing.defaultGrind = defaultGrind;
                   } else {
@@ -818,8 +524,6 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                         tagAlt: tagAlt,
                         meta: metaController.text.trim(),
                         inStock: inStock,
-
-                        // 🔥 novos campos
                         grindOptions: grindOptions,
                         defaultGrind: defaultGrind,
                       ),
@@ -830,7 +534,6 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                 Navigator.pop(dialogCtx);
               },
             ),
-
           ],
         );
       },
@@ -839,21 +542,22 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
     await _saveToServer();
   }
 
-
   Future<void> _deleteProduct(CatalogProduct p) async {
     setState(() => _products.remove(p));
     await _saveToServer(showSnack: false);
   }
 
   // ---------------- UI ----------------
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Catálogo de Produtos (site)', style: TextStyle(fontSize: 14),),
+        title: const Text(
+          'Catálogo de Produtos (site)',
+          style: TextStyle(fontSize: 14),
+        ),
         actions: [
           if (_isSaving)
             const Padding(
@@ -879,7 +583,8 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
         label: const Text('Novo produto'),
       ),
       body: Padding(
-        padding: const EdgeInsets.only(top: 16, bottom: 120, left: 16, right: 16),
+        padding:
+        const EdgeInsets.only(top: 16, bottom: 120, left: 16, right: 16),
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _products.isEmpty
@@ -901,9 +606,7 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
               child: ListTile(
                 title: Text(
                   p.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -916,8 +619,9 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                     Text(
                       p.inStock ? 'Em estoque' : 'Sem estoque',
                       style: TextStyle(
-                        color:
-                        p.inStock ? Colors.green : Colors.redAccent,
+                        color: p.inStock
+                            ? Colors.green
+                            : Colors.redAccent,
                         fontWeight: FontWeight.w600,
                         fontSize: 12,
                       ),
@@ -928,8 +632,10 @@ class _CatalogProductsPageState extends State<CatalogProductsPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.amber),
-                      onPressed: () => _addOrEditProduct(editing: p),
+                      icon: const Icon(Icons.edit,
+                          color: Colors.amber),
+                      onPressed: () =>
+                          _addOrEditProduct(editing: p),
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline,
