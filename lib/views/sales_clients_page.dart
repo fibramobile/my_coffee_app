@@ -1997,6 +1997,8 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                                     ],
                                   ),
 
+
+
                                   // Botão "Marcar como pago"
                         /*
                                   if (!pagamentoPago)

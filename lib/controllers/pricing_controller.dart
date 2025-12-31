@@ -151,10 +151,18 @@ class PricingController extends ChangeNotifier {
 
   Future<void> removeSavedPricing(int index) async {
     if (index < 0 || index >= _savedPricings.length) return;
-    _savedPricings.removeAt(index);
-    await _syncToServer();
-    notifyListeners();
+
+    try {
+      _savedPricings.removeAt(index);
+      await _syncToServer();
+      notifyListeners();
+    } catch (e, s) {
+      debugPrint('Erro ao remover precificação: $e');
+      debugPrint('$s');
+      rethrow;
+    }
   }
+
 
   // 🔥 NOVO: margem líquida por SKU para usar no dashboard
   double? getNetMarginForSku(String sku) {

@@ -105,21 +105,27 @@ class PricingListPage extends StatelessWidget {
                         IconButton(
                           icon: const Icon(Icons.edit, color: Colors.amber),
                           onPressed: () {
-                            for (int i = 0; i < controller.savedPricings.length; i++) {
-                              final item = controller.savedPricings[i];
-                            }
-                            // 👉 já carrega o modelo ANTES de navegar
-                            controller.loadFromSaved(originalIndex);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PricingFormPage(
-                                  controller: controller,
-                                  editingIndex: originalIndex,
+                            try {
+                              final len = controller.savedPricings.length;
+                              if (originalIndex < 0 || originalIndex >= len) return;
+
+                              controller.loadFromSaved(originalIndex);
+
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PricingFormPage(
+                                    controller: controller,
+                                    editingIndex: originalIndex,
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            } catch (e, s) {
+                              debugPrint('ERRO ao editar: $e');
+                              debugPrint('$s');
+                            }
                           },
+
                         ),
 
 
@@ -128,10 +134,49 @@ class PricingListPage extends StatelessWidget {
                             Icons.delete_outline,
                             color: Colors.redAccent,
                           ),
-                          onPressed: () {
-                            controller.removeSavedPricing(originalIndex);
+                          tooltip: 'Excluir precificação',
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (dialogCtx) {
+                                return AlertDialog(
+                                  title: const Text('Excluir precificação'),
+                                  content: const Text(
+                                    'Tem certeza que deseja excluir esta precificação?\n\n'
+                                        'Essa ação não pode ser desfeita.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(dialogCtx).pop(false),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.redAccent,
+                                      ),
+                                      onPressed: () => Navigator.of(dialogCtx).pop(true),
+                                      child: const Text('Excluir'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+
+                            if (confirm == true) {
+                              await controller.removeSavedPricing(originalIndex);
+
+                              if (!context.mounted) return;
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Precificação excluída com sucesso'),
+                                ),
+                              );
+                            }
                           },
                         ),
+
                       ],
                     ),
                   ),
