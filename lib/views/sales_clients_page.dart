@@ -2265,7 +2265,124 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       ],
     );
   }
+/*
+  Future<void> _confirmTogglePaymentStatus(Order order) async {
+    final atual = order.paymentStatus.toUpperCase();
+    final vaiPraPago = atual != 'PAGO';
+    final novoStatus = vaiPraPago ? 'PAGO' : 'AGUARDANDO_PAGAMENTO';
 
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(vaiPraPago ? 'Confirmar pagamento' : 'Reabrir pagamento'),
+        content: Text(
+          vaiPraPago
+              ? 'Deseja marcar o pedido ${order.id} como PAGO?'
+              : 'Deseja voltar o pedido ${order.id} para AGUARDANDO PAGAMENTO?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    int extractGrams({required String sku, required String name}) {
+      final s = '${sku.toUpperCase()} ${name.toUpperCase()}';
+
+      // 250g, 500g etc
+      final m = RegExp(r'(\d+)\s*G').firstMatch(s);
+      if (m != null) return int.tryParse(m.group(1)!) ?? 250;
+
+      if (s.contains('1KG') || s.contains('1000G')) return 1000;
+      if (s.contains('500')) return 500;
+      if (s.contains('250')) return 250;
+
+      return 250; // fallback
+    }
+
+    double costUnitFromKg({required double costPerKg, required int grams}) {
+      return costPerKg * (grams / 1000.0);
+    }
+
+    String money(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+    try {
+      // ✅ se estiver indo para PAGO, calcula e manda custos congelados
+      List<Map<String, dynamic>>? itemsCostPatch;
+
+      if (novoStatus == 'PAGO') {
+        itemsCostPatch = [];
+
+        debugPrint('================= CONGELAR CUSTO (PAGO) =================');
+        debugPrint('Pedido: ${order.id}');
+
+        for (final item in order.items) {
+          final pricing = _pricingController.getPricingForItem(
+            sku: item.sku,
+            name: item.name,
+          );
+
+          if (pricing == null) {
+            debugPrint('⚠️ Sem precificação para sku="${item.sku}" | name="${item.name}"');
+            continue;
+          }
+
+          final grams = extractGrams(sku: item.sku, name: item.name);
+          final unitCost = costUnitFromKg(costPerKg: pricing.totalCostPerKg, grams: grams);
+
+          itemsCostPatch.add({
+            'sku': item.sku,
+            'name': item.name,
+            'gramsAtSale': grams,
+            'unitCostAtSale': unitCost,
+          });
+
+          debugPrint('Item "${item.name}" | sku=${item.sku} | ${grams}g');
+          debugPrint('  custo/kg = R\$ ${money(pricing.totalCostPerKg)}');
+          debugPrint('  unitCostAtSale = R\$ ${money(unitCost)}');
+        }
+
+        debugPrint('==========================================================');
+      }
+
+      // ✅ chama backend salvando status + custos congelados (se PAGO)
+      final updated = await _api.updatePaymentStatus(
+        orderId: order.id,
+        paymentStatus: novoStatus,
+        itemsCostAtSale: itemsCostPatch, // <- NOVO
+      );
+
+      setState(() {
+        final idx = _orders.indexWhere((o) => o.id == order.id);
+        if (idx != -1) _orders[idx] = updated;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            novoStatus == 'PAGO'
+                ? 'Pagamento marcado como PAGO (custo congelado).'
+                : 'Pagamento voltou para Aguardando pagamento.',
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao atualizar pagamento: $e')),
+      );
+    }
+  }
+*/
   Future<void> _confirmTogglePaymentStatus(Order order) async {
     final atual = order.paymentStatus.toUpperCase();
     final vaiPraPago = atual != 'PAGO';
@@ -2297,38 +2414,16 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     if (confirm != true) return;
 
     try {
-      // ✅ Print SOMENTE quando estiver indo para PAGO
-      int _extractGramsFromNameOrSku({required String sku, required String name}) {
-        final s = '${sku.toUpperCase()} ${name.toUpperCase()}';
-
-        // tenta achar "250g", "500g", "1kg" etc no nome
-        final g = RegExp(r'(\d+)\s*G').firstMatch(s);
-        if (g != null) return int.tryParse(g.group(1)!) ?? 1000;
-
-        if (s.contains('1KG') || s.contains('1000G')) return 1000;
-        if (s.contains('500')) return 500;
-        if (s.contains('250')) return 250;
-
-        // fallback seguro (se seu padrão é vender 250g)
-        return 250;
-      }
-
-      double _costForUnitFromCostPerKg({
-        required double costPerKg,
-        required int grams,
-      }) {
-        return costPerKg * (grams / 1000.0);
-      }
-
-      String _money(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+      // ==========================================================
+      // ✅ CONGELAR CUSTOS APENAS AO IR PARA PAGO
+      // ==========================================================
+      List<Map<String, dynamic>>? itemsCostAtSale;
 
       if (novoStatus == 'PAGO') {
-        debugPrint('================= CONFIRMAR PAGO =================');
-        debugPrint('Pedido: ${order.id}');
+        itemsCostAtSale = [];
 
-        double totalReceita = 0.0;
-        double totalCusto = 0.0;
-        double totalLucro = 0.0;
+        debugPrint('================= CONGELAR CUSTO =================');
+        debugPrint('Pedido: ${order.id}');
 
         for (final item in order.items) {
           final pricing = _pricingController.getPricingForItem(
@@ -2343,51 +2438,36 @@ class _SalesClientsPageState extends State<SalesClientsPage>
             continue;
           }
 
-          final grams = _extractGramsFromNameOrSku(sku: item.sku, name: item.name);
-
-          final custoUnit = _costForUnitFromCostPerKg(
-            costPerKg: pricing.totalCostPerKg,
-            grams: grams,
+          final grams = _extractGramsFromItemSafe(
+            sku: item.sku,
+            name: item.name,
           );
 
-          final receitaItem = item.unitPrice * item.qty;
-          final custoItem = custoUnit * item.qty;
-          final lucroItem = receitaItem - custoItem;
+          final unitCostAtSale =
+              pricing.totalCostPerKg * (grams / 1000.0);
 
-          totalReceita += receitaItem;
-          totalCusto += custoItem;
-          totalLucro += lucroItem;
+          itemsCostAtSale.add({
+            'sku': item.sku,
+            'name': item.name,
+            'gramsAtSale': grams,
+            'unitCostAtSale': unitCostAtSale,
+          });
 
           debugPrint(
-            'Item: "${item.name}" | sku=${item.sku} | ${grams}g | qty=${item.qty}',
-          );
-          debugPrint(
-            '  Pago (un): R\$ ${_money(item.unitPrice)} | Receita: R\$ ${_money(receitaItem)}',
-          );
-          debugPrint(
-            '  Custo (un): R\$ ${_money(custoUnit)} (custo/kg R\$ ${_money(pricing.totalCostPerKg)}) | Custo total: R\$ ${_money(custoItem)}',
-          );
-          debugPrint(
-            '  ✅ Lucro líquido (item): R\$ ${_money(lucroItem)}',
+            'Item ${item.name} | ${grams}g | custo/kg R\$ ${pricing.totalCostPerKg.toStringAsFixed(2)} | unitCostAtSale R\$ ${unitCostAtSale.toStringAsFixed(2)}',
           );
         }
 
-        debugPrint('------------------ TOTAIS ------------------');
-        debugPrint('Receita total: R\$ ${_money(totalReceita)}');
-        debugPrint('Custo total:   R\$ ${_money(totalCusto)}');
-        debugPrint('✅ Lucro líquido total: R\$ ${_money(totalLucro)}');
-
-        // margem líquida total (%)
-        final margem = totalReceita <= 0 ? 0.0 : (totalLucro / totalReceita) * 100;
-        debugPrint('Margem líquida: ${margem.toStringAsFixed(1).replaceAll('.', ',')}%');
-        debugPrint('==================================================');
+        debugPrint('===============================================');
       }
 
-
-
+      // ==========================================================
+      // ✅ CHAMADA FINAL AO BACKEND
+      // ==========================================================
       final updated = await _api.updatePaymentStatus(
         orderId: order.id,
         paymentStatus: novoStatus,
+        itemsCostAtSale: itemsCostAtSale, // ✅ NOME CORRETO
       );
 
       setState(() {
@@ -2399,7 +2479,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
         SnackBar(
           content: Text(
             novoStatus == 'PAGO'
-                ? 'Pagamento marcado como PAGO.'
+                ? 'Pagamento marcado como PAGO (custos congelados).'
                 : 'Pagamento voltou para Aguardando pagamento.',
           ),
         ),
@@ -2410,6 +2490,71 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       );
     }
   }
+
+
+  ///=======================================================
+/// CONGELA CUSTO DOS ITENS NO MOMENTO DO PAGAMENTO
+/// =======================================================
+  List<Map<String, dynamic>> _buildFrozenItemsPayload(Order order) {
+    int extractGrams({required String sku, required String name}) {
+      final s = '${sku.toUpperCase()} ${name.toUpperCase()}';
+
+      final m = RegExp(r'(\d+)\s*G').firstMatch(s);
+      if (m != null) return int.tryParse(m.group(1)!) ?? 250;
+
+      if (s.contains('1KG') || s.contains('1000G')) return 1000;
+      if (s.contains('500')) return 500;
+      if (s.contains('250')) return 250;
+
+      return 250;
+    }
+
+    double unitCostFromKg(double costPerKg, int grams) {
+      return costPerKg * (grams / 1000.0);
+    }
+
+    final List<Map<String, dynamic>> out = [];
+
+    debugPrint('================= CONGELAR CUSTOS =================');
+    debugPrint('Pedido: ${order.id}');
+
+    for (final item in order.items) {
+      // 🔒 já congelado → mantém
+      if (item.unitCostAtSale != null && item.gramsAtSale != null) {
+        out.add(item.toJson());
+        continue;
+      }
+
+      final pricing = widget.pricingController.getPricingForItem(
+        sku: item.sku,
+        name: item.name,
+      );
+
+      if (pricing == null) {
+        debugPrint('⚠️ Sem precificação para ${item.name}');
+        out.add(item.toJson());
+        continue;
+      }
+
+      final grams = extractGrams(sku: item.sku, name: item.name);
+      final unitCost = unitCostFromKg(pricing.totalCostPerKg, grams);
+
+      debugPrint(
+        'Item ${item.name} | ${grams}g | custo unit R\$ ${unitCost.toStringAsFixed(2)}',
+      );
+
+      out.add({
+        ...item.toJson(),
+        'gramsAtSale': grams,
+        'unitCostAtSale': unitCost,
+      });
+    }
+
+    debugPrint('===================================================');
+    return out;
+  }
+
+
 
 }
 

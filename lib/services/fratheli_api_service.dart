@@ -31,32 +31,35 @@ class FratheliApiService {
     return decoded.map<Order>((e) => Order.fromJson(e)).toList();
   }
 
-  ///Atualiza status do pagamento
+  /// Atualiza status do pagamento (agora congela custo quando virar PAGO)
   Future<Order> updatePaymentStatus({
     required String orderId,
     required String paymentStatus,
     String paymentProvider = 'PIX_MANUAL',
     String? paymentId,
+
+    // ✅ NOVO: lista de custos congelados por item
+    List<Map<String, dynamic>>? itemsCostAtSale,
   }) async {
     final uri = Uri.parse('$_base/api.php?action=update-payment');
 
-    final body = jsonEncode({
+    final payload = <String, dynamic>{
       'orderId': orderId,
       'paymentStatus': paymentStatus,
       'paymentProvider': paymentProvider,
       'paymentId': paymentId,
-    });
+      // só manda se existir
+      if (itemsCostAtSale != null) 'itemsCostAtSale': itemsCostAtSale,
+    };
 
     final res = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: body,
+      body: jsonEncode(payload),
     );
 
     if (res.statusCode != 200) {
-      throw Exception(
-        'Erro HTTP ${res.statusCode} ao atualizar pagamento',
-      );
+      throw Exception('Erro HTTP ${res.statusCode} ao atualizar pagamento');
     }
 
     final data = jsonDecode(res.body);
@@ -65,9 +68,9 @@ class FratheliApiService {
       throw Exception('Falha na API: ${data['error'] ?? 'erro desconhecido'}');
     }
 
-    // API devolve `order` atualizado
     return Order.fromJson(data['order']);
   }
+
 
   ///Atualiza status do envio
   Future<Order> updateShippingStatus({

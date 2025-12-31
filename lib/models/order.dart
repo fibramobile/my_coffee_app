@@ -6,37 +6,70 @@ class OrderItem {
   final int qty;
   final double unitPrice;
 
+  // ✅ NOVOS (congelados no momento da venda)
+  final double? unitCostAtSale; // custo unitário (ex: custo do pacote 250g)
+  final int? gramsAtSale;       // 250 / 500 / 1000 (opcional)
+
   OrderItem({
     required this.sku,
     required this.name,
     required this.qty,
     required this.unitPrice,
+    this.unitCostAtSale,
+    this.gramsAtSale,
   });
 
-
   factory OrderItem.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic v) {
+      if (v == null) return 0;
+      if (v is int) return v;
+      return int.tryParse(v.toString()) ?? 0;
+    }
+
+    double parseDouble(dynamic v) {
+      if (v == null) return 0.0;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString()) ?? 0.0;
+    }
+
+    double? parseDoubleNullable(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString());
+    }
+
+    int? parseIntNullable(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      return int.tryParse(v.toString());
+    }
+
     return OrderItem(
-      sku: json['sku'] ?? '',
-      name: json['name'] ?? '',
-      qty: (json['qty'] ?? 0) is int
-          ? json['qty']
-          : int.tryParse(json['qty'].toString()) ?? 0,
-      unitPrice: (json['unitPrice'] ?? 0).toDouble(),
+      sku: (json['sku'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      qty: parseInt(json['qty']),
+      unitPrice: parseDouble(json['unitPrice']),
+
+      // ✅ lê do backend (se já existir)
+      unitCostAtSale: parseDoubleNullable(json['unitCostAtSale']),
+      gramsAtSale: parseIntNullable(json['gramsAtSale']),
     );
   }
 
-  // ✅ ADICIONE ISTO
   Map<String, dynamic> toJson() {
     return {
       'sku': sku,
       'name': name,
       'qty': qty,
       'unitPrice': unitPrice,
+
+      // ✅ só salva se tiver (evita sujar pedidos antigos)
+      if (unitCostAtSale != null) 'unitCostAtSale': unitCostAtSale,
+      if (gramsAtSale != null) 'gramsAtSale': gramsAtSale,
     };
   }
 
   double get total => qty * unitPrice;
-
 }
 
 
