@@ -98,6 +98,18 @@ class _PricingFormPageState extends State<PricingFormPage> {
                   const SizedBox(height: 12),
 
                   TextFormField(
+                    initialValue: model.pricingId,
+                    decoration: const InputDecoration(
+                      labelText: 'ID da precificação (família)',
+                      helperText: 'Ex.: FLOR, TIUBA, BUGIA, JATAI (sem espaços)',
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    onChanged: widget.controller.setPricingId,
+                  ),
+                  const SizedBox(height: 16),
+
+
+                  TextFormField(
                     initialValue: model.productName,
                     decoration: const InputDecoration(
                       labelText: 'Nome do produto (ex: Mel de Bugia)',

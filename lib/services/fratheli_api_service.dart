@@ -174,4 +174,30 @@ class FratheliApiService {
     };
   }
 
+
+  Future<Order> updatePaymentStatusWithFrozenCosts({
+    required String orderId,
+    required String paymentStatus, // aqui vai 'PAGO'
+    required List<Map<String, dynamic>> items, // itens já com custo congelado
+  }) async {
+    final url = Uri.parse('$_base/orders/$orderId/markPaid');
+
+    final resp = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'paymentStatus': paymentStatus,
+        'items': items,
+      }),
+    );
+
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception('HTTP ${resp.statusCode}: ${resp.body}');
+    }
+
+    final data = jsonDecode(resp.body);
+    return Order.fromJson(data);
+  }
+
+
 }

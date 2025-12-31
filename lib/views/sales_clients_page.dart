@@ -122,22 +122,20 @@ class _SalesClientsPageState extends State<SalesClientsPage>
   }
 
   double _calcularLucroLiquidoMes(List<Order> paidThisMonth) {
-    double lucroLiquidoMes = 0.0;
+    double lucro = 0.0;
 
     for (final o in paidThisMonth) {
-      for (final item in o.items) {
-        final receitaItem = item.unitPrice * item.qty;
-
-        // pega margem líquida da tela de precificação
-        final margemLiquida =
-            _pricingController.getNetMarginForSku(item.sku) ?? 0.0;
-
-        lucroLiquidoMes += receitaItem * margemLiquida;
-      }
+      final r = calcOrderProfit(
+        order: o,
+        pricingController: widget.pricingController, // ✅ aqui SIM existe widget
+      );
+      lucro += r.lucroLiquido;
     }
 
-    return lucroLiquidoMes;
+    return lucro;
   }
+
+
 
   Widget _buildShippingFilterChips() {
     final options = <String, String>{
@@ -361,6 +359,9 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     }
     return null;
   }
+
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -1704,6 +1705,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                     elevation: 1,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
+                      /*
                       onTap: () {
                         Navigator.push(
                           context,
@@ -1713,6 +1715,16 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                           ),
                         );
                       },
+                      */
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => OrderDetailsPage(order: order),
+                          ),
+                        );
+                      },
+
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 10),
@@ -1798,7 +1810,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                                       ),
                                     ),
 
-
+/*
                                   // STATUS PAGAMENTO (clicável)
                                   InkWell(
                                     borderRadius:
@@ -1885,6 +1897,45 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                                       ),
                                     ),
                                   ),
+*/
+                                  // STATUS PAGAMENTO (clicável)
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(999),
+                                    onTap: () async {
+                                      await _confirmTogglePaymentStatus(order);
+                                    },
+
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: _statusColor(order.paymentStatus).withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 6,
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: _statusColor(order.paymentStatus),
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            _statusLabel(order.paymentStatus),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: _statusColor(order.paymentStatus),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
 
                                   const SizedBox(height: 6),
 
@@ -2215,7 +2266,229 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     );
   }
 
+  Future<void> _confirmTogglePaymentStatus(Order order) async {
+    final atual = order.paymentStatus.toUpperCase();
+    final vaiPraPago = atual != 'PAGO';
+    final novoStatus = vaiPraPago ? 'PAGO' : 'AGUARDANDO_PAGAMENTO';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(vaiPraPago ? 'Confirmar pagamento' : 'Reabrir pagamento'),
+        content: Text(
+          vaiPraPago
+              ? 'Deseja marcar o pedido ${order.id} como PAGO?'
+              : 'Deseja voltar o pedido ${order.id} para AGUARDANDO PAGAMENTO?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      // ✅ Print SOMENTE quando estiver indo para PAGO
+      int _extractGramsFromNameOrSku({required String sku, required String name}) {
+        final s = '${sku.toUpperCase()} ${name.toUpperCase()}';
+
+        // tenta achar "250g", "500g", "1kg" etc no nome
+        final g = RegExp(r'(\d+)\s*G').firstMatch(s);
+        if (g != null) return int.tryParse(g.group(1)!) ?? 1000;
+
+        if (s.contains('1KG') || s.contains('1000G')) return 1000;
+        if (s.contains('500')) return 500;
+        if (s.contains('250')) return 250;
+
+        // fallback seguro (se seu padrão é vender 250g)
+        return 250;
+      }
+
+      double _costForUnitFromCostPerKg({
+        required double costPerKg,
+        required int grams,
+      }) {
+        return costPerKg * (grams / 1000.0);
+      }
+
+      String _money(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+      if (novoStatus == 'PAGO') {
+        debugPrint('================= CONFIRMAR PAGO =================');
+        debugPrint('Pedido: ${order.id}');
+
+        double totalReceita = 0.0;
+        double totalCusto = 0.0;
+        double totalLucro = 0.0;
+
+        for (final item in order.items) {
+          final pricing = _pricingController.getPricingForItem(
+            sku: item.sku,
+            name: item.name,
+          );
+
+          if (pricing == null) {
+            debugPrint(
+              '⚠️ Sem precificação para sku="${item.sku}" | name="${item.name}"',
+            );
+            continue;
+          }
+
+          final grams = _extractGramsFromNameOrSku(sku: item.sku, name: item.name);
+
+          final custoUnit = _costForUnitFromCostPerKg(
+            costPerKg: pricing.totalCostPerKg,
+            grams: grams,
+          );
+
+          final receitaItem = item.unitPrice * item.qty;
+          final custoItem = custoUnit * item.qty;
+          final lucroItem = receitaItem - custoItem;
+
+          totalReceita += receitaItem;
+          totalCusto += custoItem;
+          totalLucro += lucroItem;
+
+          debugPrint(
+            'Item: "${item.name}" | sku=${item.sku} | ${grams}g | qty=${item.qty}',
+          );
+          debugPrint(
+            '  Pago (un): R\$ ${_money(item.unitPrice)} | Receita: R\$ ${_money(receitaItem)}',
+          );
+          debugPrint(
+            '  Custo (un): R\$ ${_money(custoUnit)} (custo/kg R\$ ${_money(pricing.totalCostPerKg)}) | Custo total: R\$ ${_money(custoItem)}',
+          );
+          debugPrint(
+            '  ✅ Lucro líquido (item): R\$ ${_money(lucroItem)}',
+          );
+        }
+
+        debugPrint('------------------ TOTAIS ------------------');
+        debugPrint('Receita total: R\$ ${_money(totalReceita)}');
+        debugPrint('Custo total:   R\$ ${_money(totalCusto)}');
+        debugPrint('✅ Lucro líquido total: R\$ ${_money(totalLucro)}');
+
+        // margem líquida total (%)
+        final margem = totalReceita <= 0 ? 0.0 : (totalLucro / totalReceita) * 100;
+        debugPrint('Margem líquida: ${margem.toStringAsFixed(1).replaceAll('.', ',')}%');
+        debugPrint('==================================================');
+      }
+
+
+
+      final updated = await _api.updatePaymentStatus(
+        orderId: order.id,
+        paymentStatus: novoStatus,
+      );
+
+      setState(() {
+        final idx = _orders.indexWhere((o) => o.id == order.id);
+        if (idx != -1) _orders[idx] = updated;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            novoStatus == 'PAGO'
+                ? 'Pagamento marcado como PAGO.'
+                : 'Pagamento voltou para Aguardando pagamento.',
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao atualizar pagamento: $e')),
+      );
+    }
+  }
+
 }
+
+
+class _OrderProfit {
+  final double receitaProdutos;
+  final double custoProdutos;
+  final double lucroLiquido;
+  final double margemPct;
+
+  const _OrderProfit({
+    required this.receitaProdutos,
+    required this.custoProdutos,
+    required this.lucroLiquido,
+    required this.margemPct,
+  });
+}
+
+int _extractGramsFromItemSafe({required String sku, required String name}) {
+  final upSku = sku.toUpperCase();
+  final upName = name.toUpperCase();
+
+  // tenta "250g" / "500g" no texto
+  final m = RegExp(r'(\d+)\s*G').firstMatch('$upSku $upName');
+  if (m != null) {
+    final g = int.tryParse(m.group(1) ?? '');
+    if (g != null) return g;
+  }
+
+  if (upSku.contains('1KG') || upName.contains('1KG') || upSku.contains('1000') || upName.contains('1000')) return 1000;
+  if (upSku.contains('500') || upName.contains('500')) return 500;
+  if (upSku.contains('250') || upName.contains('250')) return 250;
+
+  return 250; // fallback
+}
+
+double _unitCostFromCostPerKg({required double costPerKg, required int grams}) {
+  return costPerKg * (grams / 1000.0);
+}
+
+_OrderProfit calcOrderProfit({
+  required Order order,
+  required PricingController pricingController,
+}) {
+  double receita = 0.0;
+  double custo = 0.0;
+
+  for (final item in order.items) {
+    final pricing = pricingController.getPricingForItem(
+      sku: item.sku,
+      name: item.name,
+    );
+
+    if (pricing == null) continue;
+
+    final grams = _extractGramsFromItemSafe(sku: item.sku, name: item.name);
+    final unitCost = _unitCostFromCostPerKg(
+      costPerKg: pricing.totalCostPerKg,
+      grams: grams,
+    );
+
+    receita += item.unitPrice * item.qty;
+    custo += unitCost * item.qty;
+  }
+
+  final lucro = receita - custo;
+  final margem = receita <= 0 ? 0.0 : (lucro / receita) * 100.0;
+
+  return _OrderProfit(
+    receitaProdutos: receita,
+    custoProdutos: custo,
+    lucroLiquido: lucro,
+    margemPct: margem,
+  );
+}
+
+
+
+
 
 // ---------------------------------------------------------------------------
 // Helpers internos

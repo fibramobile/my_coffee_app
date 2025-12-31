@@ -1,3 +1,4 @@
+/*
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -62,6 +63,67 @@ class PricingController extends ChangeNotifier {
       ) {
     _loadFromServer();
   }
+
+
+  PricingModel? getPricingForItem({
+    required String sku,
+    required String name,
+  }) {
+    if (savedPricings.isEmpty) return null;
+
+    String normalize(String s) {
+      var x = s.toUpperCase();
+
+      // remove acentos
+      x = x
+          .replaceAll('Á', 'A')
+          .replaceAll('À', 'A')
+          .replaceAll('Â', 'A')
+          .replaceAll('Ã', 'A')
+          .replaceAll('É', 'E')
+          .replaceAll('Ê', 'E')
+          .replaceAll('Í', 'I')
+          .replaceAll('Ó', 'O')
+          .replaceAll('Ô', 'O')
+          .replaceAll('Õ', 'O')
+          .replaceAll('Ú', 'U')
+          .replaceAll('Ç', 'C');
+
+      // remove tudo entre parênteses → (2SL), (Moído), etc
+      x = x.replaceAll(RegExp(r'\(.*?\)'), '');
+
+      // remove pesos
+      x = x.replaceAll(RegExp(r'\d+\s?G'), '');
+
+      // limpa espaços
+      x = x.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+      return x;
+    }
+
+    final itemNameNorm = normalize(name);
+
+    for (final pricing in savedPricings) {
+      final pricingNameNorm = normalize(pricing.productName);
+
+      if (itemNameNorm.contains(pricingNameNorm) ||
+          pricingNameNorm.contains(itemNameNorm)) {
+        return pricing;
+      }
+    }
+
+    return null;
+  }
+
+
+  double? getTotalCostPerKgForItem({required String sku, required String name}) {
+    final p = getPricingForItem(sku: sku, name: name);
+    return p?.totalCostPerKg;
+  }
+
+
+
+
 
   // ------- setters normais -------
 
@@ -252,3 +314,299 @@ class PricingController extends ChangeNotifier {
     }
   }
 }
+
+*/
+
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
+import '../models/pricing_model.dart';
+import '../models/cost_item.dart';
+
+class PricingController extends ChangeNotifier {
+  static const String _apiUrl =
+      'https://smapps.16mb.com/fratheli/app/pricings.php';
+
+  PricingModel model;
+
+  final List<PricingModel> _savedPricings = [];
+  List<PricingModel> get savedPricings => List.unmodifiable(_savedPricings);
+
+  PricingController({PricingModel? initial})
+      : model = initial ??
+      PricingModel(
+        pricingId: 'BUGIA', // ✅ NOVO
+        productName: 'Mel de Bugia',
+        markupPercent: 50,
+        items: [
+          CostItem(name: 'Café verde (matéria-prima) KG', costPerKg: 63.75),
+          CostItem(
+            name: 'Torrefação / processamento',
+            description: 'Custo por kg torrado + combustível',
+            costPerKg: 8,
+          ),
+          CostItem(
+            name: 'Embalagem',
+            description: 'Valor de 4x 250g para referência de 1kg',
+            costPerKg: 7.2,
+          ),
+          CostItem(
+            name: 'Rótulo',
+            description: 'Valor de 4x 250g para referência de 1kg',
+            costPerKg: 4,
+          ),
+          CostItem(
+            name: 'Mão de obra',
+            description: 'Colher, secar, beneficiar etc.',
+            costPerKg: 3,
+          ),
+          CostItem(name: 'Combustível / transporte / distribuição', costPerKg: 2.7),
+          CostItem(name: 'Mel', costPerKg: 2),
+          CostItem(
+            name: 'Custos fixos / perdas / margem segurança',
+            description: 'Perdas, custos fixos rateados, marketing etc.',
+            costPerKg: 5,
+          ),
+        ],
+      ) {
+    _loadFromServer();
+  }
+
+  // ============================================================
+  // ✅ NOVO: BUSCA POR ID (à prova de falhas)
+  // ============================================================
+
+  PricingModel? getPricingById(String pricingId) {
+    final pid = pricingId.trim().toUpperCase();
+    if (pid.isEmpty) return null;
+
+    try {
+      return _savedPricings.firstWhere(
+            (p) => p.pricingId.trim().toUpperCase() == pid,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  double? getTotalCostPerKgForPricingId(String pricingId) {
+    return getPricingById(pricingId)?.totalCostPerKg;
+  }
+
+  // ============================================================
+  // ✅ Helper: extrai "família" do SKU do item
+  // Ex: "TIUBA-250-MOIDO" -> "TIUBA"
+  // Ex: "FLOR" -> "FLOR"
+  // ============================================================
+  String _familyFromSku(String sku) {
+    final s = sku.trim().toUpperCase();
+    if (s.isEmpty) return '';
+    if (s.contains('-')) return s.split('-').first.trim();
+    return s;
+  }
+
+  // ============================================================
+  // ✅ Seu método: agora tenta por ID primeiro (sku -> family -> pricingId)
+  // e só cai no nome por compatibilidade
+  // ============================================================
+  PricingModel? getPricingForItem({
+    required String sku,
+    required String name,
+  }) {
+    if (savedPricings.isEmpty) return null;
+
+    // 1) ✅ tentativa sólida: SKU -> família -> pricingId
+    final family = _familyFromSku(sku);
+    final byId = getPricingById(family);
+    if (byId != null) return byId;
+
+    // 2) fallback opcional: tenta extrair família pelo nome também
+    final familyFromName = _familyFromSku(name.replaceAll(' ', '-'));
+    final byId2 = getPricingById(familyFromName);
+    if (byId2 != null) return byId2;
+
+    // 3) último fallback: seu match antigo por nome (mantido)
+    String normalize(String s) {
+      var x = s.toUpperCase();
+      x = x
+          .replaceAll('Á', 'A')
+          .replaceAll('À', 'A')
+          .replaceAll('Â', 'A')
+          .replaceAll('Ã', 'A')
+          .replaceAll('É', 'E')
+          .replaceAll('Ê', 'E')
+          .replaceAll('Í', 'I')
+          .replaceAll('Ó', 'O')
+          .replaceAll('Ô', 'O')
+          .replaceAll('Õ', 'O')
+          .replaceAll('Ú', 'U')
+          .replaceAll('Ç', 'C');
+      x = x.replaceAll(RegExp(r'\(.*?\)'), '');
+      x = x.replaceAll(RegExp(r'\d+\s?G'), '');
+      x = x.replaceAll(RegExp(r'\s+'), ' ').trim();
+      return x;
+    }
+
+    final itemNameNorm = normalize(name);
+
+    for (final pricing in savedPricings) {
+      final pricingNameNorm = normalize(pricing.productName);
+
+      if (itemNameNorm.contains(pricingNameNorm) ||
+          pricingNameNorm.contains(itemNameNorm)) {
+        return pricing;
+      }
+    }
+
+    return null;
+  }
+
+  double? getTotalCostPerKgForItem({
+    required String sku,
+    required String name,
+  }) {
+    final p = getPricingForItem(sku: sku, name: name);
+    return p?.totalCostPerKg;
+  }
+
+  // ------- setters normais -------
+  void setPricingId(String value) {
+    model.pricingId = value.trim().toUpperCase();
+    notifyListeners();
+  }
+
+  void setProductName(String value) {
+    model.productName = value;
+    notifyListeners();
+  }
+
+  void setMarkupPercent(double value) {
+    model.markupPercent = value;
+    notifyListeners();
+  }
+
+  void updateItemCost(int index, double value) {
+    if (index < 0 || index >= model.items.length) return;
+    model.items[index].costPerKg = value;
+    notifyListeners();
+  }
+
+  void addItem(CostItem item) {
+    model.items.add(item);
+    notifyListeners();
+  }
+
+  void removeItem(int index) {
+    if (index < 0 || index >= model.items.length) return;
+    model.items.removeAt(index);
+    notifyListeners();
+  }
+
+  // ------- carregar para edição -------
+  void loadFromSaved(int index) {
+    if (index < 0 || index >= _savedPricings.length) return;
+
+    final selected = _savedPricings[index];
+
+    final clonedItems = selected.items
+        .map((e) => CostItem(name: e.name, description: e.description, costPerKg: e.costPerKg))
+        .toList();
+
+    model = PricingModel(
+      pricingId: selected.pricingId, // ✅ NOVO
+      productName: selected.productName,
+      markupPercent: selected.markupPercent,
+      items: clonedItems,
+    );
+
+    notifyListeners();
+  }
+
+  // ------- salvar (novo ou editar) -------
+  Future<void> saveCurrentPricing({int? indexToUpdate}) async {
+    final clonedItems = model.items
+        .map((e) => CostItem(name: e.name, description: e.description, costPerKg: e.costPerKg))
+        .toList();
+
+    final saved = PricingModel(
+      pricingId: model.pricingId.trim().toUpperCase(), // ✅ NOVO
+      productName: model.productName,
+      markupPercent: model.markupPercent,
+      items: clonedItems,
+    );
+
+    if (indexToUpdate != null &&
+        indexToUpdate >= 0 &&
+        indexToUpdate < _savedPricings.length) {
+      _savedPricings[indexToUpdate] = saved;
+    } else {
+      _savedPricings.add(saved);
+    }
+
+    await _syncToServer();
+    notifyListeners();
+  }
+
+  Future<void> removeSavedPricing(int index) async {
+    if (index < 0 || index >= _savedPricings.length) return;
+
+    try {
+      _savedPricings.removeAt(index);
+      await _syncToServer();
+      notifyListeners();
+    } catch (e, s) {
+      debugPrint('Erro ao remover precificação: $e');
+      debugPrint('$s');
+      rethrow;
+    }
+  }
+
+  // ------- SYNC REMOTA COM PHP -------
+  Future<void> _loadFromServer() async {
+    try {
+      final uri = Uri.parse(_apiUrl);
+      final resp = await http.get(uri);
+
+      if (resp.statusCode == 200 && resp.body.isNotEmpty) {
+        final decoded = jsonDecode(resp.body);
+
+        if (decoded is List) {
+          _savedPricings
+            ..clear()
+            ..addAll(
+              decoded
+                  .map((e) => PricingModel.fromJson(e as Map<String, dynamic>))
+                  .toList(),
+            );
+          notifyListeners();
+        }
+      } else {
+        debugPrint('Falha ao carregar do servidor: ${resp.statusCode} ${resp.body}');
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar precificações do servidor: $e');
+    }
+  }
+
+  Future<void> _syncToServer() async {
+    try {
+      final uri = Uri.parse(_apiUrl);
+      final listMap = _savedPricings.map((p) => p.toJson()).toList();
+
+      final resp = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode(listMap),
+      );
+
+      if (resp.statusCode != 200) {
+        debugPrint('Falha ao salvar no servidor: ${resp.statusCode} ${resp.body}');
+      }
+    } catch (e) {
+      debugPrint('Erro ao salvar precificações no servidor: $e');
+    }
+  }
+}
+
+

@@ -13,6 +13,7 @@ class OrderItem {
     required this.unitPrice,
   });
 
+
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     return OrderItem(
       sku: json['sku'] ?? '',
@@ -24,8 +25,20 @@ class OrderItem {
     );
   }
 
+  // ✅ ADICIONE ISTO
+  Map<String, dynamic> toJson() {
+    return {
+      'sku': sku,
+      'name': name,
+      'qty': qty,
+      'unitPrice': unitPrice,
+    };
+  }
+
   double get total => qty * unitPrice;
+
 }
+
 
 class Order {
   final String id;
