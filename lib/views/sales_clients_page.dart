@@ -7,6 +7,8 @@ import '../services/fratheli_api_service.dart';
 import 'order_details_page.dart';
 import 'client_details_page.dart';
 
+enum DashRange { month, last7, last30, year, custom }
+
 class SalesClientsPage extends StatefulWidget {
   final PricingController pricingController;
 
@@ -48,6 +50,122 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       return o.shippingStatus.toUpperCase() == _shippingFilter;
     }).toList();
   }
+  ///---------------------
+  ///   UP DashBoard
+  /// -------------------
+
+  DashRange _dashRange = DashRange.month;
+  DateTimeRange? _customRange;
+
+  String _dashRangeLabel() {
+    final now = DateTime.now();
+    switch (_dashRange) {
+      case DashRange.last7:
+        return 'Últimos 7 dias';
+      case DashRange.last30:
+        return 'Últimos 30 dias';
+      case DashRange.year:
+        return 'Ano ${now.year}';
+      case DashRange.custom:
+        if (_customRange == null) return 'Personalizado';
+        String f(DateTime d) =>
+            '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+        return '${f(_customRange!.start)} → ${f(_customRange!.end)}';
+      case DashRange.month:
+      default:
+        return 'Mês ${now.month.toString().padLeft(2, '0')}/${now.year}';
+    }
+  }
+
+  /// Intervalo [start, end) — end exclusivo (boa prática)
+  DateTimeRange _resolveDashRange() {
+    final now = DateTime.now();
+
+    switch (_dashRange) {
+      case DashRange.last7:
+        return DateTimeRange(
+          start: DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6)),
+          end: now,
+        );
+
+      case DashRange.last30:
+        return DateTimeRange(
+          start: DateTime(now.year, now.month, now.day).subtract(const Duration(days: 29)),
+          end: now,
+        );
+
+      case DashRange.year:
+        return DateTimeRange(
+          start: DateTime(now.year, 1, 1),
+          end: now,
+        );
+
+      case DashRange.custom:
+        return _customRange ??
+            DateTimeRange(
+              start: DateTime(now.year, now.month, 1),
+              end: now,
+            );
+
+      case DashRange.month:
+      default:
+        return DateTimeRange(
+          start: DateTime(now.year, now.month, 1),
+          end: now,
+        );
+    }
+  }
+
+  Widget _buildDashRangeChips() {
+    final options = <DashRange, String>{
+      DashRange.month: 'Este mês',
+      DashRange.last7: '7 dias',
+      DashRange.last30: '30 dias',
+      DashRange.year: 'Ano',
+      DashRange.custom: 'Personalizado',
+    };
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: options.entries.map((e) {
+          final selected = _dashRange == e.key;
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(e.value),
+              selected: selected,
+              onSelected: (_) async {
+                if (e.key == DashRange.custom) {
+                  final picked = await showDateRangePicker(
+                    context: context,
+                    firstDate: DateTime(DateTime.now().year - 2),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    setState(() {
+                      _dashRange = DashRange.custom;
+                      _customRange = picked;
+                    });
+                  }
+                  return;
+                }
+
+                setState(() {
+                  _dashRange = e.key;
+                });
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  ///-------------------------
+  ///
+  /// -------------------------
 
   Color _shippingStatusColor(String status) {
     switch (status.toUpperCase()) {
@@ -705,7 +823,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     }
 
     final now = DateTime.now();
-
+/*
     // -------------------------------
     // PEDIDOS PAGOS NO MÊS
     // -------------------------------
@@ -728,10 +846,32 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     final margemLiquidaMesPct = totalSoldThisMonth == 0
         ? 0.0
         : (lucroLiquidoMes / totalSoldThisMonth) * 100.0;
+    */
+// -------------------------------
+// PEDIDOS PAGOS NO PERÍODO SELECIONADO
+// -------------------------------
+    final range = _resolveDashRange();
+
+    final paidInRange = _orders.where((o) {
+      if (o.createdAt == null) return false;
+      final s = o.paymentStatus.toUpperCase();
+      final dt = o.createdAt!;
+      return s == 'PAGO' &&
+          !dt.isBefore(range.start) &&
+          dt.isBefore(range.end);
+    }).toList();
+
+    final totalSoldInRange = paidInRange.fold<double>(
+      0.0,
+          (sum, o) => sum + o.total,
+    );
+
+    final lucroLiquidoPeriodo = _calcularLucroLiquidoMes(paidInRange);
 
     // -------------------------------
     // PRODUTOS x FRETE (PAGOS)
     // -------------------------------
+    /*
     double totalProdutosMes = 0.0;
     double totalFreteMes = 0.0;
 
@@ -743,6 +883,19 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       totalProdutosMes += totalItens;
       totalFreteMes += o.shipping;
     }
+    */
+    double totalProdutosPeriodo = 0.0;
+    double totalFretePeriodo = 0.0;
+
+    for (final o in paidInRange) {
+      final totalItens = o.items.fold<double>(
+        0.0,
+            (sum, item) => sum + (item.unitPrice * item.qty),
+      );
+      totalProdutosPeriodo += totalItens;
+      totalFretePeriodo += o.shipping;
+    }
+
 
     // -------------------------------
     // PENDENTES
@@ -760,9 +913,15 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     // -------------------------------
     // TICKET MÉDIO
     // -------------------------------
+ /*
     final ticketMedio = paidThisMonth.isEmpty
         ? 0.0
         : totalSoldThisMonth / paidThisMonth.length;
+*/
+    final ticketMedio = paidInRange.isEmpty
+        ? 0.0
+        : totalSoldInRange / paidInRange.length;
+
 
     return RefreshIndicator(
       onRefresh: _loadAll,
@@ -794,7 +953,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                         ?.copyWith(color: Colors.grey[700]),
                   ),
                   const SizedBox(height: 12),
-
+/*
                   // ✅ CÁLCULOS (margem real sem frete)
                   Builder(
                     builder: (_) {
@@ -934,9 +1093,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                       );
                     },
                   ),
-
                   const SizedBox(height: 16),
-
                   // Quebra Produtos x Frete (ambos informativos)
                   Row(
                     children: [
@@ -959,6 +1116,179 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                       ),
                     ],
                   ),
+                  */
+
+                  // =========================
+// ✅ DASHBOARD (UI NOVA)
+// =========================
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header do período
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Resumo · ${_dashRangeLabel()}',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF2D2213),
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.date_range,
+                            size: 18,
+                            color: Colors.grey.shade700,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Chips de período (UI de filtro)
+                      _buildDashRangeChips(),
+                      const SizedBox(height: 16),
+
+                      // ✅ Cards principais em GRID responsivo
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final w = constraints.maxWidth;
+
+                          // 2 colunas no mobile, 3 no tablet, 4 no desktop
+                          final crossAxisCount = w < 600 ? 2 : (w < 980 ? 3 : 4);
+
+                          // calcula margem (sem frete)
+                          final double receitaProdutosPeriodo = totalProdutosPeriodo;
+                          final double margemLiquidaPeriodoPct = receitaProdutosPeriodo <= 0
+                              ? 0
+                              : (lucroLiquidoPeriodo / receitaProdutosPeriodo) * 100;
+
+                          Color margemColor(double pct) {
+                            if (pct < 8) return Colors.red.shade700;
+                            if (pct < 15) return Colors.orange.shade800;
+                            return Colors.green.shade700;
+                          }
+
+                          String margemBadge(double pct) {
+                            if (pct < 8) return 'Baixa';
+                            if (pct < 15) return 'Boa';
+                            return 'Excelente';
+                          }
+
+                          return GridView.count(
+                            crossAxisCount: crossAxisCount,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            childAspectRatio: w < 600 ? 1.25 : 1.55, // deixa cards mais “dashboard”
+                            children: [
+                              _DashboardNumber(
+                                label: 'Vendido (PAGO)',
+                                value: _formatCurrency(totalSoldInRange),
+                                icon: Icons.attach_money,
+                                valueColor: Colors.green.shade800,
+                                badgeText:
+                                paidInRange.isEmpty ? 'Sem vendas' : '${paidInRange.length} pedidos',
+                                badgeColor: Colors.green.shade700,
+                              ),
+                              _DashboardNumber(
+                                label: 'Pendente',
+                                value: _formatCurrency(totalPending),
+                                icon: Icons.hourglass_top,
+                                valueColor: _warningColor(totalPending, altoAPartir: 300),
+                                badgeText: pendingOrders.isEmpty ? 'OK' : '${pendingOrders.length} pendentes',
+                                badgeColor: _warningColor(totalPending, altoAPartir: 300),
+                              ),
+                              _DashboardNumber(
+                                label: 'Ticket médio',
+                                value: _formatCurrency(ticketMedio),
+                                icon: Icons.analytics_outlined,
+                                valueColor: const Color(0xFF2D2213),
+                              ),
+                              _DashboardNumber(
+                                label: 'Lucro líquido',
+                                value: _formatCurrency(lucroLiquidoPeriodo),
+                                icon: Icons.trending_up,
+                                valueColor: _profitColor(lucroLiquidoPeriodo, baixoAte: 30),
+                                badgeText: lucroLiquidoPeriodo < 0
+                                    ? 'Prejuízo'
+                                    : (lucroLiquidoPeriodo <= 30 ? 'Atenção' : 'Saudável'),
+                                badgeColor: _profitColor(lucroLiquidoPeriodo, baixoAte: 30),
+                              ),
+                              _DashboardNumber(
+                                label: 'Margem líquida',
+                                value:
+                                '${margemLiquidaPeriodoPct.toStringAsFixed(1).replaceAll('.', ',')}%',
+                                icon: Icons.percent,
+                                valueColor: margemColor(margemLiquidaPeriodoPct),
+                                badgeText: margemBadge(margemLiquidaPeriodoPct),
+                                badgeColor: margemColor(margemLiquidaPeriodoPct),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      // ✅ Card separado: Produtos x Frete (mais “premium”)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.70),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.black.withOpacity(0.06)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.pie_chart_outline, size: 18, color: Color(0xFF2D2213)),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Composição do faturamento (PAGO)',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF2D2213),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _DashboardNumber(
+                                    label: 'Produtos',
+                                    value: _formatCurrency(totalProdutosPeriodo),
+                                    icon: Icons.inventory_2_outlined,
+                                    valueColor: const Color(0xFF2D2213),
+                                    badgeText: 'Sem frete',
+                                    badgeColor: Colors.grey.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _DashboardNumber(
+                                    label: 'Frete (cliente)',
+                                    value: _formatCurrency(totalFretePeriodo),
+                                    icon: Icons.local_shipping_outlined,
+                                    valueColor: Colors.blueGrey.shade700,
+                                    badgeText: 'Separado',
+                                    badgeColor: Colors.blueGrey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+
                 ],
               ),
             ),
