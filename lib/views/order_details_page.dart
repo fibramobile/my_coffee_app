@@ -203,7 +203,10 @@ class OrderDetailsPage extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Padding(
+            child:
+
+
+            Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,11 +226,37 @@ class OrderDetailsPage extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  it.name,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w500),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    // Nome (com peso junto)
+                                    Flexible(
+                                      child: Text(
+                                        it.name, // ex: "Mel de Tiúba - 250g"
+                                        style: const TextStyle(fontWeight: FontWeight.w500),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+
+                                    // Chip colado no nome
+                                    if (it.grind != null && it.grind!.trim().isNotEmpty) ...[
+                                      const SizedBox(width: 8),
+                                      Chip(
+                                        visualDensity: VisualDensity.compact,
+                                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        padding: EdgeInsets.zero,
+                                        labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                        label: Text(
+                                          it.grind!.trim(),
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
+
+
                                 const SizedBox(height: 2),
                                 Text(
                                   'SKU: ${it.sku} · ${it.qty}x ${_formatCurrency(it.unitPrice)}',
