@@ -7,7 +7,8 @@ import '../services/fratheli_api_service.dart';
 import 'order_details_page.dart';
 import 'client_details_page.dart';
 
-enum DashRange { month, last7, last30, year, custom }
+enum DashRange { total, month, last7, last30, year, custom }
+
 
 class SalesClientsPage extends StatefulWidget {
   final PricingController pricingController;
@@ -60,6 +61,8 @@ class _SalesClientsPageState extends State<SalesClientsPage>
   String _dashRangeLabel() {
     final now = DateTime.now();
     switch (_dashRange) {
+      case DashRange.total:
+        return 'Período total';
       case DashRange.last7:
         return 'Últimos 7 dias';
       case DashRange.last30:
@@ -82,6 +85,20 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     final now = DateTime.now();
 
     switch (_dashRange) {
+      case DashRange.total:
+      // pega do primeiro pedido até agora
+        final dates = _orders
+            .map((o) => o.createdAt)
+            .whereType<DateTime>()
+            .toList()
+          ..sort();
+
+        final start = dates.isEmpty
+            ? DateTime(now.year, now.month, 1)
+            : DateTime(dates.first.year, dates.first.month, dates.first.day);
+
+        return DateTimeRange(start: start, end: now);
+
       case DashRange.last7:
         return DateTimeRange(
           start: DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6)),
@@ -116,8 +133,10 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     }
   }
 
+
   Widget _buildDashRangeChips() {
     final options = <DashRange, String>{
+      DashRange.total: 'Período total',
       DashRange.month: 'Este mês',
       DashRange.last7: '7 dias',
       DashRange.last30: '30 dias',
@@ -140,9 +159,11 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                 if (e.key == DashRange.custom) {
                   final picked = await showDateRangePicker(
                     context: context,
-                    firstDate: DateTime(DateTime.now().year - 2),
+                    locale: const Locale('pt', 'BR'),
+                    firstDate: DateTime(DateTime.now().year - 10), // pode aumentar
                     lastDate: DateTime.now(),
                   );
+
                   if (picked != null) {
                     setState(() {
                       _dashRange = DashRange.custom;
@@ -162,6 +183,7 @@ class _SalesClientsPageState extends State<SalesClientsPage>
       ),
     );
   }
+
 
   ///-------------------------
   ///
@@ -252,8 +274,6 @@ class _SalesClientsPageState extends State<SalesClientsPage>
 
     return lucro;
   }
-
-
 
   Widget _buildShippingFilterChips() {
     final options = <String, String>{
@@ -477,8 +497,6 @@ class _SalesClientsPageState extends State<SalesClientsPage>
     }
     return null;
   }
-
-
 
 
   @override
@@ -1119,8 +1137,8 @@ class _SalesClientsPageState extends State<SalesClientsPage>
                   */
 
                   // =========================
-// ✅ DASHBOARD (UI NOVA)
-// =========================
+                  // ✅ DASHBOARD (UI NOVA)
+                  // =========================
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

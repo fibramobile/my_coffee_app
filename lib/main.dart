@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'controllers/pricing_controller.dart';
 import 'views/home_page.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() {
   runApp(const CafePrecoApp());
@@ -22,6 +23,20 @@ class _CafePrecoAppState extends State<CafePrecoApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      // ✅ força pt_BR (dd/MM/yyyy)
+      locale: const Locale('pt', 'BR'),
+
+      // (opcional) limita os locais suportados
+      supportedLocales: const [
+        Locale('pt', 'BR'),
+      ],
+
+      // ✅ delegates obrigatórios
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       title: 'Gestão de Café – App',
       theme: ThemeData(
         useMaterial3: true,
